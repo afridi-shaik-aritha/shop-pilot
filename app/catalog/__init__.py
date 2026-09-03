@@ -1,0 +1,1 @@
+"""Authoritative product and review access. The LLM never invents catalog facts."""

@@ -1,0 +1,1 @@
+"""Explicit application state (sessions, carts, checkouts, orders)."""

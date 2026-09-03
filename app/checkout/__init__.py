@@ -1,0 +1,1 @@
+"""Checkout, confirmation gate, orders, and mock payment. All rules deterministic."""

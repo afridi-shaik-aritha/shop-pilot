@@ -1,0 +1,1 @@
+"""Deterministic cart math. Prices always come from the catalog service."""

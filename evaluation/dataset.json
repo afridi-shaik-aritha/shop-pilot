@@ -1,0 +1,5 @@
+[
+  {"query": "wireless headphones under 10000 with good battery life", "expected_product_ids": ["P01"], "expected_constraints": {"category": "wireless headphones", "max_price": 10000}},
+  {"query": "bluetooth speaker with deep bass for picnics", "expected_product_ids": ["P04"], "expected_constraints": {"category": "bluetooth speaker"}},
+  {"query": "smartwatch with heart rate tracking", "expected_product_ids": ["P05"], "expected_constraints": {"category": "smartwatch"}}
+]
