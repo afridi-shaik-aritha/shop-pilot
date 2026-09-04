@@ -44,12 +44,72 @@ def test_tool_names_and_schemas():
         assert "properties" in tools[name].schema
 
 
+def test_product_refs_resolve_by_name_or_slug():
+    """The transcript failure: the model invented 'sonicwave_x5' instead of
+    copying P01 from search results. Id-based tools must resolve names and
+    model-invented slugs so a guessed id can never brick the cart."""
+    tools = _tools()
+    # exact canonical id still works
+    assert tools["get_product"].run({"product_id": "P01"}, {})["product_id"] == "P01"
+    # name-only, exactly as the shopper said it — the second transcript turn,
+    # where the model failed despite the user quoting the full name
+    ctx = {}
+    detail = tools["get_product"].run(
+        {"product_name": "SonicWave X5 Wireless Headphones"}, {}
+    )
+    assert detail["product_id"] == "P01"
+    out = tools["add_to_cart"].run(
+        {"product_name": "SonicWave X5 Wireless Headphones"}, ctx
+    )
+    assert out["cart"]["items"][0]["product_id"] == "P01"
+    # review search, compare, update, remove by name
+    assert (
+        tools["search_reviews"].run(
+            {"product_name": "SonicWave X5 Wireless Headphones"}, {}
+        )["reviews"]
+    )
+    tools["compare_products"].run(
+        {"product_ids": ["SonicWave X5 Wireless Headphones", "P02"]}, {}
+    )
+    tools["update_cart_quantity"].run(
+        {"product_name": "SonicWave X5 Wireless Headphones", "quantity": 2}, ctx
+    )
+    assert ctx["cart"].items[0].quantity == 2
+    tools["remove_from_cart"].run({"product_name": "SonicWave X5 Wireless Headphones"}, ctx)
+    assert ctx["cart"].items == []
+
+
+def test_ambiguous_product_ref_lists_candidates():
+    """A short slug that matches several products must name them with ids so
+    the model can retry with the canonical one — never silently pick. This is
+    the exact slug the live model sent instead of P01."""
+    tools = _tools()
+    with pytest.raises(ValueError) as exc:
+        tools["add_to_cart"].run({"product_id": "sonicwave_x5"}, {})
+    msg = str(exc.value)
+    assert "P01" in msg and "P06" in msg
+
+
+def test_product_ref_schemas_advertise_product_name():
+    """Small models read the schema — product_name must be visible on every
+    id-based tool, and product_id must not be forced when only the name is
+    known."""
+    tools = _tools()
+    for name in ["get_product", "search_reviews", "add_to_cart", "remove_from_cart"]:
+        props = tools[name].schema["properties"]
+        assert "product_name" in props, name
+        assert "product_id" not in tools[name].schema.get("required", []), name
+
+
 def test_search_get_compare_flow():
     tools = _tools()
     hits = tools["search_products"].run(
         {"query": "wireless headphones long battery life", "top_k": 2}, {}
     )
     assert hits["products"][0]["product_id"] == "P01"
+    # BM25 relevance is a ranking detail, never a fact: exposing it let a
+    # live model quote it as a rating ("4.0/5 (5.71 score)").
+    assert "score" not in hits["products"][0]
     detail = tools["get_product"].run({"product_id": "P01"}, {})
     assert detail["price"] == 8499.0
     table = tools["compare_products"].run({"product_ids": ["P01", "P02"]}, {})
@@ -66,8 +126,14 @@ def test_search_products_schema_documents_natural_language_filters():
     assert set(props) >= {"max_price", "category", "in_stock"}
     desc = t.description
     assert "max_price" in desc and "in_stock" in desc and "under 10000" in desc
-    # price/budget queries are satisfied by the free-text query itself
-    assert "free-text" in desc or "free text" in desc
+    # price/budget queries are satisfied by the query string itself
+    assert ("free-text" in desc or "free text" in desc
+            or "shopper's own words" in desc)
+    # feature/sensor asks are free-text too — a live model once refused
+    # "smartwatch with heart-rate tracking" claiming it could not filter by
+    # specs, and no id/model name is ever required to search.
+    assert "heart rate tracking" in desc
+    assert "no id or model name is needed" in desc
 
 
 def test_cart_checkout_confirm_order_flow():

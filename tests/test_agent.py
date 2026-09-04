@@ -73,6 +73,40 @@ def test_agent_step_budget_stops_loops():
     assert res.tool_calls_made == 3
 
 
+def test_agent_step_budget_tail_allows_final_answer():
+    """When the step budget runs out mid-reasoning, the agent gets ONE final
+    no-tools completion so it can answer from the results it already has
+    instead of dead-ending with a stop message."""
+    agent, ctx = _agent(
+        [
+            LLMMessage(content="", tool_calls=[ToolCall(name="get_cart", arguments={})]),
+            LLMMessage(content="The cart has 0 items.", tool_calls=[]),
+        ]
+    )
+    agent.max_steps = 1  # exhausts on the very first tool-calling step
+    agent.max_tool_calls = 5
+    res = agent.run("What is in my cart?", ctx)
+    assert res.status == "ok"
+    assert res.text == "The cart has 0 items."
+    assert res.tool_calls_made == 1
+
+
+def test_agent_step_budget_tail_stops_if_model_keeps_calling():
+    """If the final completion still demands tools, the agent stops honestly."""
+    agent, ctx = _agent(
+        [
+            LLMMessage(content="", tool_calls=[ToolCall(name="get_cart", arguments={})]),
+            LLMMessage(content="", tool_calls=[ToolCall(name="get_cart", arguments={})]),
+        ]
+    )
+    agent.max_steps = 1
+    agent.max_tool_calls = 5
+    res = agent.run("Loop forever", ctx)
+    assert res.status == "failed"
+    assert "Stopped: step budget exceeded" in res.text
+    assert res.tool_calls_made == 1
+
+
 class _CaptureLLM:
     """Records every message list it is asked to complete (no network)."""
 

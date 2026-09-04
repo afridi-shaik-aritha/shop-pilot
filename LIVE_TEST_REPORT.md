@@ -145,3 +145,43 @@ Verified live on the NIM default (`openai/gpt-oss-20b`, same provider/model as s
 - Pasted code → fixed redirect reply, `tools: []`, **token never echoed**, slip + code untouched, **no order placed**, and the token is absent from stored session history.
 - Canonical `python demo/live_chat.py` (policy/catalog/cart/prepare turns) still passes 4/4 on the same model.
 - Full suite: **171 tests green**; safety gate 16/16.
+
+---
+
+## 5. Sixth run — live regression battery (live, 2026-09-04)
+
+Every verbatim live failure from the 2026-09-04 hardening session is now a
+repeatable battery: `python demo/live_battery.py` drives the real `/chat`
+surface (TestClient + throwaway SQLite, provider from `.env`) through the
+original transcripts and asserts the structural fix holds end to end. The
+canonical routed smoke (`python demo/live_chat.py`) stays the separate
+one-command health check.
+
+**Run on 2026-09-04** against the current `.env` default — **NVIDIA NIM,
+`nvidia/nemotron-3-super-120b-a12b`** (a larger model than the `gpt-oss-20b`
+runs in earlier sections; the fixes held on both).
+
+```
+python demo/live_battery.py          # verdict: PASS (11/11)
+python demo/live_chat.py             # verdict: PASS (6/6)
+```
+
+| Scenario | Verbatim transcript (from the live failures) | Result |
+|---|---|---|
+| A. Product-id guessing | "add sonic wave to cart" / 'this one "SonicWave X5 Wireless Headphones"' | ✅ resolved to P01, cart P01 ×1 — the model never hit an invented-id error (`sonicwave_x5` retried as a name; ambiguous slugs list candidate ids) |
+| B. Feature-ask refusal | "Show me a smartwatch with heart-rate tracking" | ✅ searched (`search_products`), grounded PulseFit S2 (P05) surfaced — no "I'm sorry, I can't…" |
+| C. Referential compare | search → "compare these three" | ✅ compared exactly the shown set `{P01, P07, P09}` — no guessed sequential ids (P02/P03) |
+| D. Confirm gates | "confirm the order" / "yes, proceed to checkout" / "alright, confirm" (slip awaiting) | ✅ all three answered deterministically with `tools: []` — the LLM never ran; slip id + code never rotated, status stayed `AWAITING_CONFIRMATION` |
+| E. Cancel gate | "cancel the checkout" | ✅ slip → `REJECTED`, token cleared, **trolley untouched** (P01 still in cart) — no `clear_cart` overreach |
+| E2 | "cancel the checkout" (nothing prepared) | ✅ deterministic "nothing to cancel", no LLM, trolley intact |
+
+### What this battery locks in
+
+- Every refusal/hallucination class seen live this session is covered by a
+  *deterministic* layer, not a prompt: the gate scenarios (D/E/E2) assert
+  `tools: []`, so a misbehaving model literally cannot reach the reply.
+  Battery scenarios A–C still depend on the model choosing tools, but the
+  schema + history-grounding fixes make the grounded path the one models take.
+- Full suite: **185 tests green**, safety gate 16/16.
+- Runner added: `demo/live_battery.py` (self-contained, exit 0 only when all
+  scenarios pass). Everything from this session remains uncommitted.

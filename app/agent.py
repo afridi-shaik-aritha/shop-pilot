@@ -146,10 +146,44 @@ class ShoppingAgent:
                         "content": str(result),
                     }
                 )
+        # Step budget exhausted mid-reasoning: the model kept calling tools and
+        # never produced a final answer. Instead of dead-ending with
+        # "Stopped: step budget exceeded", give it ONE final completion so it
+        # can answer from the tool results it already collected (churny small
+        # models otherwise burn all steps searching and leave the shopper with
+        # nothing). If it still insists on tool calls, stop honestly.
+        try:
+            final = self.llm.complete(
+                messages
+                + [
+                    {
+                        "role": "system",
+                        "content": "Summarize your answer now from the tool "
+                        "results above. Do not call any more tools.",
+                    }
+                ],
+                self.tools,
+            )
+        except Exception as exc:
+            return AgentResult(
+                text=f"LLM error: {type(exc).__name__}: {exc}",
+                status="failed",
+                steps=steps + 1,
+                tool_calls_made=tool_calls_made,
+                trace=trace,
+            )
+        if final.tool_calls:
+            return AgentResult(
+                text="Stopped: step budget exceeded.",
+                status="failed",
+                steps=steps + 1,
+                tool_calls_made=tool_calls_made,
+                trace=trace,
+            )
         return AgentResult(
-            text="Stopped: step budget exceeded.",
-            status="failed",
-            steps=steps,
+            text=final.content,
+            status="ok",
+            steps=steps + 1,
             tool_calls_made=tool_calls_made,
             trace=trace,
         )

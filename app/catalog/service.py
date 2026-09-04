@@ -25,6 +25,40 @@ class ProductService:
         except KeyError:
             raise ProductNotFound(f"unknown product: {product_id}") from None
 
+    def find_by_name(self, text: str) -> list[Product]:
+        """Best-effort name match: exact, containment, then token overlap.
+
+        Used by tools when the model passes a name or a model-invented slug
+        instead of the canonical product id. Only the top-scoring products
+        are returned: a unique best match resolves, a tie (e.g. 'SonicWave'
+        matching the X5 and its refurbished unit) stays ambiguous so callers
+        can surface the candidate ids instead of silently guessing.
+        """
+        q = " ".join(normalize_text(text))
+        if not q:
+            return []
+        qt = set(q.split())
+        scored = []
+        for p in self._by_id.values():
+            n = " ".join(normalize_text(p.name))
+            if not n:
+                continue
+            overlap = len(qt & set(n.split()))
+            if n == q:
+                score = 100
+            elif q in n or n in q:
+                score = 60 + 10 * overlap
+            else:
+                score = 10 * overlap
+            if score:
+                scored.append((score, p))
+        if not scored:
+            return []
+        best = max(s for s, _ in scored)
+        scored = [(s, p) for s, p in scored if s == best]
+        scored.sort(key=lambda t: (-t[0], len(t[1].name)))
+        return [p for _, p in scored]
+
     def compare_products(self, product_ids: list[str]) -> dict:
         products = [self.get_product(pid) for pid in product_ids]
         rows: dict[str, dict] = {}

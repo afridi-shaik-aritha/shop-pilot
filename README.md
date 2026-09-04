@@ -34,7 +34,7 @@ The UI loads your `.env` automatically (provider keys optional). The whole flow 
 
 1. **Chat** — type a wish list (“wireless headphones under ₹10,000 with good battery life”) or tap a suggestion chip. The assistant searches the catalog, answers only with grounded prices and review quotes, shows the tools it ran, and drops matches straight into the trolley panel. Products it settled on also appear as cards under the reply (derived from retrieved ids only, never prose) with working Details and Add-to-cart buttons.
 2. **Trolley** — each line shows price × quantity with − / + steppers and a remove action, with Subtotal, Shipping, GST (18%) and Total underneath. A one-tap **Clear** action empties the whole trolley at once (and voids any slip still waiting on it, exactly like the `clear_cart` tool). “Prepare checkout” freezes a snapshot of exactly what you'd be ordering.
-3. **Confirm** — the order slip shows the frozen lines plus a random per-checkout confirmation token. Only **“✓ I confirm this order”** places the order — the token is valid only for that exact trolley, so changing the cart invalidates it; “Cancel checkout” voids the slip. A successful order appears as a stamped, green **COMPLETED** slip, decrements stock, and the server stays idempotent for the same order key (replays never double-charge or double-decrement).
+3. **Confirm** — the order slip shows the frozen lines plus a random per-checkout confirmation token. Only **“✓ I confirm this order”** places the order — the token is valid only for that exact trolley, so changing the cart invalidates it; “Cancel checkout” voids the slip. A successful order appears as a stamped, green **COMPLETED** slip, decrements stock, and the server stays idempotent for the same order key (replays never double-charge or double-decrement). Chat is never a confirmation channel: typing the slip's code, saying “confirm the order”, or asking to “cancel the checkout” is answered deterministically with no LLM involved — the model holds no confirm/place/void tools, so it can neither narrate an order into existence nor empty your trolley to cancel one.
 
 “New session” resets the chat, cart and slip. Everything shown in the panels is deterministic — prices come from the catalog, never from the model.
 
@@ -47,7 +47,7 @@ The UI loads your `.env` automatically (provider keys optional). The whole flow 
 ## Quickstart (tests, CLI, eval)
 
 ```bash
-# Full test suite (165 tests: services, agents, roles, guardrails, stores, API, retrieval, web, e2e journeys)
+# Full test suite (190 tests: services, agents, roles, guardrails, intent gates, anti-fabrication, stores, API, retrieval, web, e2e journeys)
 python -m pytest -q
 
 # Recorded end-to-end demo (writes demo/recording.md)
@@ -58,6 +58,11 @@ python demo/live_chat.py
 # Compare models head-to-head on the same routed scenario (ids must be valid for your provider)
 python demo/live_chat.py --compare "model-a,model-b"
 python demo/live_chat.py --compare "openai/gpt-oss-20b,meta/llama-3.1-70b-instruct" --timeout 240
+
+# Live regression battery — replays every fixed live failure verbatim
+# (invented product ids, feature-ask refusals, "compare these three",
+# confirm/cancel gate integrity). See LIVE_TEST_REPORT.md §5.
+python demo/live_battery.py
 
 # Interactive CLI demo (type the printed token to confirm)
 python demo/cli.py
@@ -170,10 +175,14 @@ GET    /orders/{order_id}
 ## Guardrails (all deterministic, unit-tested)
 
 - **Role-scoped reach (LLM cost control, not auth):** the router picks catalog/cart/policy per message; each role holds only its own tools (policy = one read-only tool, catalog cannot touch the cart, cart cannot confirm/place), so `confirm_checkout`/`place_order` never exist in any model-visible toolset. Direct HTTP calls bypass routing and are enforced by the service layer.
+- **Deterministic chat gates (the LLM never runs):** pasting the standing slip's confirmation code, “confirm/place the order” wording, and imperative “cancel the checkout” are intercepted before the model — the server answers, or voids the slip itself, keeping the trolley untouched. Live models have tried to *narrate* confirmations and *clear the cart* to cancel; these gates make either impossible regardless of model behavior. A first-time “proceed to checkout” still reaches the model normally.
+- **Grounded answers only (anti-fabrication):** a catalog/cart product ask answered with zero tool calls is ungrounded by construction — a live model once invented five laptops with plausible specs under ids that belong to other products. Such a turn is retried once with a search-first nudge and, if the model still won't search, answered with a deterministic fallback; the invented text never reaches the shopper or history. The “products shown” grounding tag is server-owned: it never lives in assistant speech (a separate context entry carries it), and any tag a model echoes or forges is stripped from outgoing replies.
+- **Product references resolve by name or slug:** every id-based tool accepts `product_id` (copied verbatim from results, e.g. P01) *or* `product_name`; a model-invented slug is retried as a name, and ambiguous matches raise with candidate ids instead of guessing. Search results deliberately never expose BM25 relevance scores (a model once quoted them as ratings).
+- **Referential grounding across turns:** after each reply, a compact context note (ids from tool results only) lets later “compare these three” / “add this one” resolve to the products actually on screen rather than guessed sequential ids.
 - Prompt injection in product/review text is treated as **data**, never instructions.
 - Confirmation tokens are cryptographically random per checkout (`secrets.token_urlsafe`) and valid only for that checkout snapshot; the word CONFIRM alone confirms nothing. Idempotency keys are namespaced per session.
 - Tool arguments validated against JSON schemas; LLM failures become 502s, never crashes or leaked provider bodies.
-- Step + tool-call budgets stop loops; unknown tools surface as errors, not exceptions.
+- Step + tool-call budgets stop loops; when a step budget runs out mid-reasoning the model gets one final no-tools completion so it can answer from the results it already collected instead of dead-ending; unknown tools surface as errors, not exceptions.
 - Secrets come only from env and are redacted recursively from traces (including confirmation tokens).
 
 ## Project layout
