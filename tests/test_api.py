@@ -95,6 +95,73 @@ def test_error_paths(tmp_path):
     assert c.get("/orders/O-nope").status_code == 404
 
 
+def test_double_prepare_does_not_rotate_slip(tmp_path):
+    c = TestClient(_app(tmp_path))
+    sid = c.post("/cart/items", json={"product_id": "P01", "quantity": 1}).json()["session_id"]
+    p1 = c.post("/checkout/prepare", json={"session_id": sid}).json()
+    p2 = c.post("/checkout/prepare", json={"session_id": sid}).json()
+    assert p1["checkout_id"] == p2["checkout_id"]
+    assert p1["confirmation_token"] == p2["confirmation_token"]
+    assert p1["status"] == "AWAITING_CONFIRMATION"
+    # a changed trolley still mints a fresh slip
+    c.patch("/cart/items/P01", json={"session_id": sid, "quantity": 2}).json()
+    p3 = c.post("/checkout/prepare", json={"session_id": sid}).json()
+    assert p3["checkout_id"] != p1["checkout_id"]
+
+
+def test_chat_confirm_request_cannot_rotate_slip(tmp_path):
+    """Regression: a model answering 'confirm the order' by re-calling
+    prepare_checkout must not mint a fresh slip or orphan the code the
+    shopper sees on screen. The slip survives, still awaiting."""
+    script = [
+        LLMMessage(content="", tool_calls=[
+            ToolCall(name="prepare_checkout", arguments={})]),
+        LLMMessage(content="Order C-x is ready, paste your code to confirm!", tool_calls=[]),
+    ]
+    c = TestClient(_app(tmp_path, script))
+    sid = c.post("/cart/items", json={"product_id": "P01", "quantity": 1}).json()["session_id"]
+    p1 = c.post("/checkout/prepare", json={"session_id": sid}).json()
+    r = c.post("/chat", json={"session_id": sid, "message": "confirm the order"}).json()
+    assert "prepare_checkout" in r["tools"]  # the model did misbehave
+    p2 = c.get("/checkout", params={"session_id": sid}).json()
+    assert p2["checkout_id"] == p1["checkout_id"]  # slip not rotated
+    assert p2["confirmation_token"] == p1["confirmation_token"]
+    assert p2["status"] == "AWAITING_CONFIRMATION"  # nothing was confirmed
+
+
+def test_pasting_confirmation_code_in_chat_is_short_circuited(tmp_path):
+    """Pasting the slip code into chat must never reach the LLM (an empty
+    FakeLLM script would 502 on any call) and must not change server state.
+    The shopper can still confirm through the real gate afterwards."""
+    import json
+
+    from app.state.sqlite_store import SqliteStore
+
+    # empty script: any LLM call would raise and surface as a 502, so a 200
+    # with the fixed reply proves the code never reached the model
+    c = TestClient(create_app(Settings(db_path=str(tmp_path / "t.db")),
+                              llm=FakeLLM([])))
+    sid = c.post("/cart/items", json={"product_id": "P01", "quantity": 1}).json()["session_id"]
+    token = c.post("/checkout/prepare", json={"session_id": sid}).json()["confirmation_token"]
+    r = c.post("/chat", json={"session_id": sid,
+                               "message": f"{token} here's my confirmation code"})
+    assert r.status_code == 200
+    body = r.json()
+    assert "I confirm this order" in body["reply"]
+    assert body["role"] == "cart" and body["tools"] == []
+    assert token not in body["reply"]
+    still = c.get("/checkout", params={"session_id": sid}).json()
+    assert still["status"] == "AWAITING_CONFIRMATION"
+    assert still["confirmation_token"] == token
+    # the code never lands in stored session history
+    sess = SqliteStore(str(tmp_path / "t.db")).load(sid)
+    assert token not in json.dumps(sess.messages)
+    # ...and the shopper can still confirm through the real gate afterwards
+    conf = c.post("/checkout/confirm", json={"session_id": sid,
+                                             "confirmation_token": token}).json()
+    assert conf["status"] == "CONFIRMED"
+
+
 def test_update_and_remove(tmp_path):
     c = TestClient(_app(tmp_path))
     sid = c.post("/cart/items", json={"product_id": "P03", "quantity": 1}).json()["session_id"]

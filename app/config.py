@@ -54,7 +54,7 @@ class Settings:
         )
 
     def has_llm(self) -> bool:
-        return self.llm_provider in ("nim", "openrouter") and bool(
+        return self.llm_provider in ("nim", "openrouter", "lmstudio", "deepinfra") and bool(
             self.llm_base_url and self.llm_api_key and self.llm_model
         )
 

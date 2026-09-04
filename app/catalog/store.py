@@ -124,6 +124,16 @@ class SqliteCatalogStore:
             rows = self._db.execute("SELECT payload FROM reviews").fetchall()
         return [Review.model_validate_json(r["payload"]) for r in rows]
 
+    def category_counts(self) -> list[dict]:
+        """Distinct categories with total + in-stock counts, alphabetical."""
+        counts: dict[str, dict] = {}
+        for p in self.list_products():
+            row = counts.setdefault(p.category, {"category": p.category, "total": 0, "in_stock": 0})
+            row["total"] += 1
+            if p.availability and p.stock > 0:
+                row["in_stock"] += 1
+        return sorted(counts.values(), key=lambda r: r["category"])
+
     def upsert_review(self, review: Review) -> None:
         with self._lock:
             self._db.execute(

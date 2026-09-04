@@ -2,7 +2,7 @@
 
 A shopping assistant that takes a natural-language request through retrieval → grounded explanation → review evidence → comparison → cart → checkout → **explicit human confirmation** → revalidation → idempotent mock order execution. A deterministic router sends every request to a reach-bounded specialist over one ReAct engine — **catalog** (read-only search/compare/reviews), **cart** (trolley management + checkout prep), or **policy** (grounded answers from a policy corpus). No role can confirm or place an order: that capability exists only behind the human checkout slip/API. The LLM picks tools and reasons; deterministic application code enforces every business rule.
 
-**Runtime LLMs:** NVIDIA NIM or OpenRouter via an OpenAI-compatible `/chat/completions` client (stdlib urllib, env-configured, keys never logged or traced).
+**Runtime LLMs:** NVIDIA NIM, OpenRouter, LM Studio, or Deep Infra via an OpenAI-compatible `/chat/completions` client (stdlib urllib, env-configured, keys never logged or traced).
 
 **Retrieval (replaceable behind one interface):** BM25 (baseline), semantic embeddings, and hybrid BM25+semantic fused with Reciprocal Rank Fusion (k=60) plus an optional cross-encoder rerank. A measured experiment runner compares them on the fixed eval dataset — see `evaluation/experiment_eval.py` and the recorded tables below.
 
@@ -16,6 +16,8 @@ The assistant ships with a warm, editorial paper-style web UI — cream backdrop
 
 ![Shop-Pilot landing — the greeting with suggestion chips](assets/ui-greeting.png)
 
+![Shop-Pilot storefront — browse the shelves, live search, sort, add to the same trolley](assets/ui-shop.png)
+
 ![Shop-Pilot chatting — grounded answer with tool chips, item auto-added to the trolley](assets/ui-cart.png)
 
 ![Shop-Pilot confirmation gate — token box, “I confirm this order” and cancel](assets/ui-gate.png)
@@ -28,7 +30,7 @@ python -m uvicorn app.api.routes:create_app --factory --reload
 # open http://127.0.0.1:8000
 ```
 
-The UI loads your `.env` automatically (NIM/OpenRouter keys optional). The whole flow happens in three moves:
+The UI loads your `.env` automatically (provider keys optional). The whole flow happens in three moves:
 
 1. **Chat** — type a wish list (“wireless headphones under ₹10,000 with good battery life”) or tap a suggestion chip. The assistant searches the catalog, answers only with grounded prices and review quotes, shows the tools it ran, and drops matches straight into the trolley panel. Products it settled on also appear as cards under the reply (derived from retrieved ids only, never prose) with working Details and Add-to-cart buttons.
 2. **Trolley** — each line shows price × quantity with − / + steppers and a remove action, with Subtotal, Shipping, GST (18%) and Total underneath. “Prepare checkout” freezes a snapshot of exactly what you'd be ordering.
@@ -36,9 +38,11 @@ The UI loads your `.env` automatically (NIM/OpenRouter keys optional). The whole
 
 “New session” resets the chat, cart and slip. Everything shown in the panels is deterministic — prices come from the catalog, never from the model.
 
+- **Shop page:** the topbar **Shop →** button opens `/shop`, a standalone storefront over the same catalog and the same trolley — category shelves, live search, price/rating sort, product cards with Details and Add-to-cart. Checkout itself stays in the assistant, where the confirmation slip lives.
+
 - **Demo data mode:** the UI falls back to an offline deterministic mock (`app/static/mock.js`) whenever the API is unreachable (e.g. opening the static file directly) or when you append `?mock=1` — every flow stays walkable without a server or LLM.
-- **Standalone preview build:** `python demo/build_ui_preview.py` regenerates `app/static/ui-preview.html`, a self-contained single-file copy of the UI (screenshots above were captured from it).
-- **Refreshing the screenshots:** `python demo/capture_ui_shots.py` re-drives the demo in headless Chrome and rewrites `assets/ui-*.png` after each UI state appears (requires node ≥ 21 and Google Chrome).
+- **Standalone preview build:** `python demo/build_ui_preview.py` regenerates `app/static/ui-preview.html`, a self-contained single-file copy of the assistant UI (screenshots above were captured from it).
+- **Refreshing the screenshots:** `python demo/capture_ui_shots.py` re-drives the assistant demo *and* the `/shop` storefront in headless Chrome and rewrites `assets/ui-{greeting,shop,cart,gate,order}.png` after each UI state appears (requires node ≥ 21 and Google Chrome).
 
 ## Quickstart (tests, CLI, eval)
 
@@ -61,11 +65,11 @@ python demo/cli.py
 
 The `/chat` endpoint returns **503 until an LLM is configured**. Without keys, the web UI's catalog mode and the deterministic endpoints (`/cart`, `/checkout/*`, `/orders`) keep everything usable.
 
-## LLM configuration (NVIDIA NIM default, OpenRouter alternative)
+## LLM configuration (NVIDIA NIM default; OpenRouter, LM Studio, Deep Infra alternatives)
 
 | Env var | Meaning |
 |---|---|
-| `LLM_PROVIDER` | `nim` or `openrouter` (`none` disables) |
+| `LLM_PROVIDER` | `nim`, `openrouter`, `lmstudio` (local) or `deepinfra` (`none` disables) |
 | `LLM_BASE_URL` | e.g. `https://integrate.api.nvidia.com/v1` (NIM hosted) or `http://localhost:8000/v1` (self-hosted NIM) or `https://openrouter.ai/api/v1` |
 | `LLM_API_KEY` | provider key, env-only, redacted from traces |
 | `LLM_MODEL` | e.g. `openai/gpt-oss-20b` (NIM hosted) or `meta/llama-3.1-70b-instruct` (self-hosted NIM) or `anthropic/claude-3.5-sonnet` (OpenRouter) |
@@ -87,6 +91,24 @@ export LLM_PROVIDER=openrouter
 export LLM_BASE_URL=https://openrouter.ai/api/v1
 export LLM_API_KEY=sk-or-...
 export LLM_MODEL=anthropic/claude-3.5-sonnet
+```
+
+Local (LM Studio — serve a loaded model locally; any non-empty key works):
+
+```bash
+export LLM_PROVIDER=lmstudio
+export LLM_BASE_URL=http://localhost:1234/v1
+export LLM_API_KEY=lm-studio
+export LLM_MODEL=qwen2.5-7b-instruct
+```
+
+Hosted alternative (Deep Infra — OpenAI-compatible endpoint):
+
+```bash
+export LLM_PROVIDER=deepinfra
+export LLM_BASE_URL=https://api.deepinfra.com/v1/openai
+export LLM_API_KEY=...
+export LLM_MODEL=meta-llama/Meta-Llama-3.1-70B-Instruct
 ```
 
 Then `curl -X POST localhost:8000/chat -H 'content-type: application/json' -d '{"message": "I need wireless headphones under 10000 with good battery"}'`.
@@ -168,7 +190,7 @@ app/
   agent.py     shared bounded ReAct engine (role-parameterized)
   state/       models, file store, SQLite store (sessions/keys/orders/traces/catalog)
   api/         FastAPI routes + web UI mount
-  static/      index.html · app.js · styles.css · mock.js (offline demo mode)
+  static/      index.html · app.js (chat) · shop.html · shop.js (storefront) · common.js (shared) · styles.css · mock.js (offline demo mode)
 data/          products.json · reviews.json · policies.json (catalog seeds)
 evaluation/    dataset · metrics · retrieval/experiment/safety/response/llm-judge runners
 demo/          interactive CLI · live routed smoke (live_chat.py) · recorded demo (demo/recording.md)

@@ -160,6 +160,14 @@ def test_from_settings_providers():
     oro = Settings(llm_provider="openrouter", llm_base_url="https://openrouter.ai/api/v1/",
                    llm_api_key="k", llm_model="y")
     assert OpenAICompatibleClient.from_settings(oro)._url == "https://openrouter.ai/api/v1/chat/completions"
+    lms = Settings(llm_provider="lmstudio", llm_base_url="http://localhost:1234/v1",
+                   llm_api_key="lm-studio", llm_model="qwen2.5-7b-instruct")
+    assert OpenAICompatibleClient.from_settings(lms)._url == "http://localhost:1234/v1/chat/completions"
+    assert lms.has_llm() is True
+    di = Settings(llm_provider="deepinfra", llm_base_url="https://api.deepinfra.com/v1/openai",
+                  llm_api_key="k", llm_model="meta-llama/Meta-Llama-3.1-70B-Instruct")
+    assert OpenAICompatibleClient.from_settings(di)._url == "https://api.deepinfra.com/v1/openai/chat/completions"
+    assert di.has_llm() is True
     with pytest.raises(ValueError):
         OpenAICompatibleClient.from_settings(Settings(llm_provider="other"))
     with pytest.raises(ValueError):

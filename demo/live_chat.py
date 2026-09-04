@@ -117,7 +117,7 @@ def main() -> int:
     load_dotenv()
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--model", default="", help="LLM_MODEL override, e.g. deepseek/deepseek-chat")
-    parser.add_argument("--provider", default="", help="LLM_PROVIDER override (openrouter|nim)")
+    parser.add_argument("--provider", default="", help="LLM_PROVIDER override (openrouter|nim|lmstudio|deepinfra)")
     parser.add_argument("--base-url", default="", help="LLM_BASE_URL override")
     parser.add_argument("--api-key", default="", help="LLM_API_KEY override")
     parser.add_argument("--compare", default="", help="comma list of models to run side by side")

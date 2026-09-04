@@ -126,3 +126,22 @@ python demo/live_chat.py --provider nim --base-url https://integrate.api.nvidia.
 
 - `thinkingmachines/inkling:*` free tiers are served only through agentic harnesses by OpenRouter — a plain OpenAI-compatible chat/completions client cannot use them regardless of credits.
 - NVIDIA NIM `integrate.api.nvidia.com` is OpenAI-compatible and works with this stack as `--provider nim`; reasoning/thinking models may need `--timeout` above the 60 s default (the 550b variant still streams thinking as `reasoning_content`, which the client ignores and answers in `content`).
+
+---
+
+## 4. Fifth run — confirmation-ceremony hardening (live, 2026-09-04)
+
+The session-3-style live chat exposed a real-model failure worth its own run. With a prepared slip standing, a shopper typed "confirm the order" in chat and then pasted their slip code. The model (a) answered "confirm the order" by **re-calling `prepare_checkout`**, minting a fresh slip and orphaning the code shown on screen, and (b) on the pasted code, **fabricated success** ("order confirmed 🎉 … confirmation email sent") with no tool call — server state never changed, which is why the order slip on the right still read `AWAITING_CONFIRMATION`.
+
+Root cause: the *role split already removed* `confirm_checkout`/`place_order` from every chat role, but nothing stopped the model from re-preparing (rotating the slip) or from *claiming* a confirmation it cannot perform. Fixes, all structural rather than prompt-only:
+
+1. **`prepare_checkout` is idempotent while an identical slip stands** (`app/tools.py`): re-preparing the same trolley returns the *same* `checkout_id` and code; a changed cart or cancelled/completed slip still mints a fresh one. No model, double tap, or mis-tap can rotate a live slip.
+2. **Pasting the standing slip's code in chat is short-circuited** (`app/api/routes.py`): the server detects the code in the message and answers deterministically ("confirmation happens only when you press 'I confirm this order' on the order slip") — **no LLM call happens**, and the code is scrubbed from both the model-visible text and the stored session history.
+3. **System prompt ceremony rules** (`app/prompts.py`): never call `prepare_checkout` to "confirm", never ask the shopper to paste the code into chat, never present a C- id as an order.
+
+Verified live on the NIM default (`openai/gpt-oss-20b`, same provider/model as section 3):
+
+- `confirm the order` → the model **still** called `prepare_checkout` (prompt drift is real on a 20b model), but the slip held: same `checkout_id C-dcfca46ea25a`, still `AWAITING_CONFIRMATION`, code intact. The old behavior (fresh slip, orphaned on-screen code) is now impossible.
+- Pasted code → fixed redirect reply, `tools: []`, **token never echoed**, slip + code untouched, **no order placed**, and the token is absent from stored session history.
+- Canonical `python demo/live_chat.py` (policy/catalog/cart/prepare turns) still passes 4/4 on the same model.
+- Full suite: **171 tests green**; safety gate 16/16.

@@ -27,7 +27,7 @@ from app.observe import TraceRecorder
 from app.retrieval.corpus import load_products, load_reviews
 from app.retrieval.factory import build_search_index
 from app.roles import classify, subset_tools
-from app.state.models import Order, ShoppingSession
+from app.state.models import ConfirmationStatus, Order, ShoppingSession
 from app.state.sqlite_store import SqliteStore
 from app.tools import build_tools
 
@@ -135,6 +135,10 @@ def create_app(settings: Settings | None = None, llm=None) -> FastAPI:
     def index():
         return FileResponse(str(STATIC_DIR / "index.html"))
 
+    @app.get("/shop")
+    def shop():
+        return FileResponse(str(STATIC_DIR / "shop.html"))
+
     @app.get("/health")
     def health():
         return {"ok": True, "llm": settings.llm_provider if settings.has_llm() else "none"}
@@ -166,6 +170,14 @@ def create_app(settings: Settings | None = None, llm=None) -> FastAPI:
         db.save(session)
         return {"session_id": session.session_id}
 
+    def _code_safe(text: str, session: ShoppingSession) -> str:
+        """Strip the session's confirmation code out of text that will reach
+        the model or the stored history. The shopper may paste their slip code
+        into chat; the code belongs on the slip, never in the conversation."""
+        co = session.checkout
+        token = (co.confirmation_token or "") if co is not None else ""
+        return text.replace(token, "[confirmation code]") if token else text
+
     @app.post("/chat")
     def chat(body: ChatIn):
         if llm is None:
@@ -175,7 +187,38 @@ def create_app(settings: Settings | None = None, llm=None) -> FastAPI:
             )
         session = session_of(body.session_id)
         ctx = ctx_of(session)
-        role = classify(body.message)
+        standing = ctx.get("checkout")
+        # Deterministic gate: an order is confirmed only on the slip (the
+        # human button or /checkout/confirm), never by chat. If the shopper
+        # pastes the standing slip's code into chat, answer without the LLM so
+        # no model can ever claim, guess, repeat, or "confirm" anything.
+        if (
+            standing is not None
+            and standing.status == ConfirmationStatus.AWAITING_CONFIRMATION
+            and standing.confirmation_token
+            and standing.confirmation_token in body.message
+        ):
+            reply = (
+                "I can't confirm that from chat — confirmation happens only "
+                "when you press \u201cI confirm this order\u201d on the order slip. "
+                "Your code is already on the slip, nothing has been charged, "
+                "and no order exists yet. Press the button on the slip (or "
+                "Cancel checkout to void it)."
+            )
+            stored = _code_safe(body.message, session)
+            session.messages.append({"role": "user", "content": stored[:4000]})
+            session.messages.append({"role": "assistant", "content": reply})
+            del session.messages[:-32]
+            persist(session, ctx)
+            traces.record("chat", {"session_id": session.session_id,
+                                   "status": "ok", "role": "cart",
+                                   "tool_calls": 0,
+                                   "note": "code-paste short-circuit"})
+            return {"session_id": session.session_id, "reply": reply,
+                    "status": "ok", "steps": 0, "tool_calls": 0,
+                    "role": "cart", "tools": [], "products": []}
+        message = _code_safe(body.message, session)
+        role = classify(message)
         agent = ShoppingAgent(
             llm=llm,
             tools=subset_tools(tools, role),
@@ -184,20 +227,22 @@ def create_app(settings: Settings | None = None, llm=None) -> FastAPI:
             max_tool_calls=role.max_tool_calls,
         )
         try:
-            result = agent.run(body.message, ctx, history=session.messages)
+            result = agent.run(message, ctx, history=session.messages)
         except LLMError as exc:
             raise HTTPException(502, "LLM error") from exc
         if result.status == "failed" and result.text.startswith("LLM error:"):
             # Map provider failures to 502 without echoing raw provider bodies
             # and without poisoning the replay history with error text.
+            # The error kind (never the body) is traced for diagnosis.
             traces.record("chat", {"session_id": session.session_id,
                                    "status": "failed",
                                    "role": role.name,
-                                   "tool_calls": result.tool_calls_made})
+                                   "tool_calls": result.tool_calls_made,
+                                   "error": result.text[:200]})
             raise HTTPException(502, "LLM error")
         # remember the plain-language turns so later messages have context;
         # keep the last 16 turns (32 messages) so multi-turn context survives.
-        session.messages.append({"role": "user", "content": body.message[:4000]})
+        session.messages.append({"role": "user", "content": message[:4000]})
         if result.text.strip():
             session.messages.append({"role": "assistant", "content": result.text[:4000]})
         del session.messages[:-32]
@@ -307,6 +352,14 @@ def create_app(settings: Settings | None = None, llm=None) -> FastAPI:
     def list_products():
         try:
             return {"products": [p.model_dump() for p in catalog_store.list_products()]}
+        except OSError as exc:
+            raise HTTPException(500, "catalog unavailable") from exc
+
+    @app.get("/categories")
+    def list_categories():
+        """Distinct catalog categories with counts — powers browse-the-shelves UI."""
+        try:
+            return {"categories": catalog_store.category_counts()}
         except OSError as exc:
             raise HTTPException(500, "catalog unavailable") from exc
 

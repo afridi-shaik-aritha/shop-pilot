@@ -75,3 +75,19 @@ def test_cart_checkout_confirm_order_flow():
     order = tools["place_order"].run({"idempotency_key": "t-key"}, ctx)
     assert order["status"] == "COMPLETED"
     assert order["order_id"].startswith("O-")
+
+
+def test_repeated_prepare_keeps_standing_slip():
+    tools = _tools()
+    ctx: dict = {}
+    tools["add_to_cart"].run({"product_id": "P01", "quantity": 1}, ctx)
+    first = tools["prepare_checkout"].run({}, ctx)
+    second = tools["prepare_checkout"].run({}, ctx)
+    assert second["checkout_id"] == first["checkout_id"]
+    assert second["confirmation_token"] == first["confirmation_token"]
+    assert second["status"] == "AWAITING_CONFIRMATION"
+    # a changed cart mints a fresh slip with a fresh code
+    tools["add_to_cart"].run({"product_id": "P02", "quantity": 1}, ctx)
+    third = tools["prepare_checkout"].run({}, ctx)
+    assert third["checkout_id"] != first["checkout_id"]
+    assert third["confirmation_token"] != first["confirmation_token"]

@@ -57,10 +57,21 @@ SHOT_AUTOPILOT = """<script>
 
 
 def main() -> int:
+    import re
+
     css = (STATIC / "styles.css").read_text(encoding="utf-8")
     mock = (STATIC / "mock.js").read_text(encoding="utf-8")
     app = (STATIC / "app.js").read_text(encoding="utf-8")
     html = (STATIC / "index.html").read_text(encoding="utf-8")
+
+    # app.js is an ES module importing ./common.js; the single-file preview
+    # is classic scripts, so inline common (exports stripped) and drop the
+    # import statement. Both transforms are syntax-neutral by construction.
+    common = (STATIC / "common.js").read_text(encoding="utf-8")
+    common = re.sub(r"^export\s+", "", common, flags=re.M)
+    app, n = re.subn(r'\nimport\s*\{[^}]*\}\s*from\s*"\./common\.js";\n', "\n", app)
+    assert n == 1, "expected exactly one common.js import in app.js"
+    assert "export " not in common.split('"use strict";', 1)[1], "un stripped export left"
 
     # drop external asset tags; we inline everything below
     html = html.replace('  <link rel="stylesheet" href="/static/styles.css" />', "")
@@ -69,7 +80,7 @@ def main() -> int:
 
     combined = (
         html.replace("</head>", f"<style>\n{css}\n</style></head>", 1)
-        .replace("</body>", f"<script>\n{mock}\n</script>\n<script>\n{app}\n</script>\n</body>", 1)
+        .replace("</body>", f"<script>\n{mock}\n</script>\n<script>\n{common}\n</script>\n<script>\n{app}\n</script>\n</body>", 1)
     )
     if "--shot" in sys.argv[1:]:
         combined = combined.replace("</body>", SHOT_AUTOPILOT + "</body>", 1)

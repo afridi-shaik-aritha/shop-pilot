@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Shop-Pilot — browse the shelves</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23ffd43b' stroke='%231b1712' stroke-width='4'/%3E%3Cpath d='M18 22h6l5 24h18l4-16H27' fill='none' stroke='%231b1712' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,640;0,9..144,700;1,9..144,600&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo-sticker" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 7h12l-1.4 11a2 2 0 0 1-2 1.8H9.4a2 2 0 0 1-2-1.8L6 7z"/><path d="M9 10V6a3 3 0 0 1 6 0v4"/>
+          </svg>
+        </div>
+        <div>
+          <h1>Shop-Pilot</h1>
+          <p>browse the shelves</p>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <a class="btn btn-ghost btn-sm" href="/">← Assistant</a>
+        <a id="trolleyLink" class="btn btn-primary btn-sm" href="/">Trolley&nbsp;<span id="shopCount" class="count" hidden></span></a>
+      </div>
+    </header>
+
+    <div class="shop-toolbar">
+      <label class="sr-only" for="shopSearch">Search products</label>
+      <input id="shopSearch" class="shop-search" type="search" placeholder="Search the shelves… (e.g. “headphones”, “espresso”)" autocomplete="off" />
+      <label class="sr-only" for="sortSel">Sort products</label>
+      <select id="sortSel" class="shop-sort" aria-label="Sort products">
+        <option value="featured">Featured</option>
+        <option value="price-asc">Price: low to high</option>
+        <option value="price-desc">Price: high to low</option>
+        <option value="rating-desc">Top rated</option>
+      </select>
+    </div>
+
+    <main class="shop-layout">
+      <aside class="shop-side" aria-label="Categories">
+        <h3>Shelves</h3>
+        <div id="catList"></div>
+      </aside>
+      <section aria-label="Products">
+        <p id="shopMeta" class="shop-meta" role="status" aria-live="polite"></p>
+        <div id="shopGrid" class="results"></div>
+      </section>
+    </main>
+
+    <div id="modalRoot"></div>
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  </div>
+  <script src="/static/mock.js"></script>
+  <script type="module" src="/static/shop.js"></script>
+</body>
+</html>

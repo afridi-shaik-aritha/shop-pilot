@@ -6,7 +6,7 @@ before capturing, so the images always show the real mid/end states.
 
 Requirements: node >= 21 (global fetch/WebSocket) and Google Chrome.
 Usage:
-    python demo/capture_ui_shots.py [--out assets] [--serve-dir app/static]
+    python demo/capture_ui_shots.py [--out assets] [--serve-dir .]
 """
 import argparse
 import os
@@ -47,6 +47,7 @@ async function newTarget(url) {
   }
   throw new Error("chrome debug port not reachable");
 }
+const SHOP = BASE.replace("ui-preview.html", "shop");
 const target = await newTarget(BASE);
 const ws = new WebSocket(target.webSocketDebuggerUrl);
 await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej; });
@@ -78,6 +79,7 @@ async function cond(expr, timeoutMs = 40000) {
 }
 const modes = [
   { key: "greeting", url: BASE,                     sel: ".chip",              settle: 1500 },
+  { key: "shop",     url: SHOP,                     sel: ".product-card",      settle: 2200 },
   { key: "cart",     url: BASE + "?shot=cart",      sel: ".cart-item",         settle: 1000 },
   { key: "gate",     url: BASE + "?shot=gate",      sel: "#confirmBtn",        settle: 6000 },
   { key: "order",    url: BASE + "?shot=order",     sel: ".order-ok",          settle: 6500 },
@@ -99,6 +101,27 @@ ws.close();
 """
 
 
+class _PreviewHandler(SimpleHTTPRequestHandler):
+    """Serve the two UI pages at their real URL shapes (/, /shop) with
+    /static/* assets, so absolute asset paths resolve exactly as they do
+    under FastAPI. Everything else 404s (the mock auto-installs on that)."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, directory=str(ROOT), **kwargs)
+
+    def translate_path(self, path):
+        import urllib.parse as up
+
+        p = up.unquote(up.urlsplit(path).path)
+        if p in ("/", "/ui-preview.html"):
+            return str(STATIC / "ui-preview.html")
+        if p == "/shop":
+            return str(STATIC / "shop.html")
+        if p.startswith("/static/"):
+            return str(STATIC / p[len("/static/"):])
+        return super().translate_path(path)
+
+
 def find_chrome() -> str:
     for cand in CHROME_CANDIDATES:
         if cand and os.path.exists(cand):
@@ -115,7 +138,6 @@ def free_port() -> int:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--out", default=str(ROOT / "assets"))
-    ap.add_argument("--serve-dir", default=str(STATIC))
     args = ap.parse_args()
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -123,11 +145,9 @@ def main() -> int:
     # 1) build the self-contained preview WITH the ?shot= autopilot
     subprocess.run([sys.executable, str(ROOT / "demo" / "build_ui_preview.py"), "--shot"], check=True)
 
-    # 2) serve the static dir locally (404 /health => the page auto-uses mock mode)
-    server = ThreadingHTTPServer(("127.0.0.1", 0), SimpleHTTPRequestHandler)
+    # 2) serve the UI at its real URL shapes (404 /health => mock mode)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _PreviewHandler)
     server_port = server.server_address[1]
-    prev_cwd = os.getcwd()
-    os.chdir(args.serve_dir)
     threading.Thread(target=server.serve_forever, daemon=True).start()
 
     # 3) headless Chrome with a remote-debugging port
@@ -161,12 +181,8 @@ def main() -> int:
         server.shutdown()
         chrome.wait(timeout=10)
         shutil.rmtree(profile, ignore_errors=True)
-        try:
-            os.chdir(prev_cwd)
-        except OSError:
-            pass
 
-    for name in ("ui-greeting.png", "ui-cart.png", "ui-gate.png", "ui-order.png"):
+    for name in ("ui-greeting.png", "ui-shop.png", "ui-cart.png", "ui-gate.png", "ui-order.png"):
         p = out_dir / name
         if p.exists():
             print(f"wrote {p} ({p.stat().st_size // 1024} KB)")

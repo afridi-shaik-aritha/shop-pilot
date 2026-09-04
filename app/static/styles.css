@@ -103,6 +103,7 @@ body::before {
 /* ---------------- buttons & chips ---------------- */
 .btn {
   border: 1.5px solid var(--line-strong); background: var(--card); color: var(--ink);
+  text-decoration: none;
   border-radius: var(--r-sm); padding: 9px 14px; font-size: 13px; font-weight: 700;
   box-shadow: 2px 2px 0 var(--line-strong);
   transition: transform 0.09s ease, box-shadow 0.09s ease, background 0.12s;
@@ -349,9 +350,27 @@ body::before {
   .think-line { animation: none !important; }
 }
 
+/* ---------------- shop page ---------------- */
+.shop-toolbar { display: flex; gap: 10px; padding: 14px 20px 0; max-width: 1320px; margin: 0 auto; width: 100%; }
+.shop-search { flex: 1; border: 1.5px solid var(--line-strong); border-radius: var(--r-sm); background: var(--card);
+  padding: 10px 14px; font-family: inherit; font-size: 14.5px; color: var(--ink); box-shadow: 2px 2px 0 var(--line-strong); }
+.shop-search::placeholder { color: var(--ink-faint); }
+.shop-sort { border: 1.5px solid var(--line-strong); border-radius: var(--r-sm); background: var(--card);
+  padding: 10px; font-family: inherit; font-size: 13px; font-weight: 700; box-shadow: 2px 2px 0 var(--line-strong); cursor: pointer; }
+.shop-layout { display: grid; grid-template-columns: 228px minmax(0, 1fr); gap: 18px; flex: 1; min-height: 0;
+  padding: 14px 20px; max-width: 1320px; margin: 0 auto; width: 100%; overflow-y: auto; }
+.shop-side h3 { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-soft); margin: 4px 0 10px; }
+.shop-side .btn { margin-bottom: 8px; justify-content: flex-start; }
+.catbtn.on { background: var(--yellow); }
+.shop-meta { font-family: var(--font-mono); font-size: 11.5px; letter-spacing: 0.06em; color: var(--ink-soft); margin: 4px 0 12px; }
+@media (max-width: 900px) {
+  .shop-layout { grid-template-columns: 1fr; }
+  .shop-side #catList { display: flex; flex-wrap: wrap; gap: 8px; }
+  .shop-side .btn { width: auto; margin-bottom: 0; }
+}
+
 /* responsive */
-@media (max-width: 1020px) {
-  body { overflow: auto; }
+@media (max-width: 1020px) {  body { overflow: auto; }
   #app { height: auto; min-height: 100%; }
   .layout { grid-template-columns: 1fr; height: auto; overflow: visible; padding-bottom: 24px; }
   .messages { max-height: 58vh; }

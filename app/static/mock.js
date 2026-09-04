@@ -955,6 +955,15 @@
         return http(200, { session_id: session.id });
       }
 
+      if (path === "/categories" && method === "GET") {        const counts = {};
+        for (const p of PRODUCTS) {
+          const row = counts[p.category] || (counts[p.category] = { category: p.category, total: 0, in_stock: 0 });
+          row.total += 1;
+          if (p.availability && p.stock > 0) row.in_stock += 1;
+        }
+        return http(200, { categories: Object.values(counts).sort((a, b) => a.category.localeCompare(b.category)) });
+      }
+
       const sid = body.session_id || params.get("session_id");
       void sid;
       if (path === "/cart" && method === "GET") {
@@ -1036,6 +1045,10 @@
         }
         session.items = []; // purchased lines leave the trolley
         return http(200, order);
+      }
+
+      if (path === "/products" && method === "GET") {
+        return http(200, { products: PRODUCTS });
       }
 
       const mProd = path.match(/^\/products\/([\w\-.]+)$/);

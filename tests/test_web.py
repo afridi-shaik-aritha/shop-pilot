@@ -89,8 +89,6 @@ def test_chat_cards_use_most_recent_product_result(tmp_path):
     c = TestClient(_app(tmp_path, script))
     body = c.post("/chat", json={"message": "bluetooth speaker for picnics"}).json()
     assert [p["product_id"] for p in body["products"]] == ["P04"]
-
-
 def test_chat_cards_narrow_to_products_named_in_reply(tmp_path):
     script = [
         LLMMessage(
@@ -104,3 +102,27 @@ def test_chat_cards_narrow_to_products_named_in_reply(tmp_path):
     c = TestClient(_app(tmp_path, script))
     body = c.post("/chat", json={"message": "show me a smartwatch"}).json()
     assert [p["product_id"] for p in body["products"]] == ["P05"]
+
+
+def test_categories_endpoint_lists_counts(tmp_path):
+    import json
+    from collections import Counter
+    seed = json.load(open("data/products.json", encoding="utf-8"))
+    expected = Counter(p["category"] for p in seed)
+    c = TestClient(_app(tmp_path))
+    cats = c.get("/categories").json()["categories"]
+    names = [x["category"] for x in cats]
+    assert names == sorted(names)
+    assert {x["category"] for x in cats} == set(expected)
+    assert sum(x["total"] for x in cats) == len(seed)
+    by_name = {x["category"]: x for x in cats}
+    assert by_name["smartwatch"]["in_stock"] >= 1
+
+
+def test_shop_page_served(tmp_path):
+    c = TestClient(_app(tmp_path))
+    r = c.get("/shop")
+    assert r.status_code == 200
+    assert 'id="shopGrid"' in r.text
+    assert c.get("/static/shop.js").status_code == 200
+    assert c.get("/static/common.js").status_code == 200

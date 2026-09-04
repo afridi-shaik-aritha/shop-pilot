@@ -69,9 +69,10 @@ def to_openai_tools(tools: dict[str, "Tool"]) -> list[dict]:
 
 
 class OpenAICompatibleClient:
-    """OpenAI-compatible chat client for NVIDIA NIM and OpenRouter.
+    """OpenAI-compatible chat client for NVIDIA NIM, OpenRouter, LM Studio,
+    and Deep Infra.
 
-    Provider selection is env-driven (LLM_PROVIDER=nim|openrouter with
+    Provider selection is env-driven (LLM_PROVIDER=nim|openrouter|lmstudio|deepinfra with
     LLM_BASE_URL / LLM_API_KEY / LLM_MODEL). Stdlib HTTP only. The API key
     is sent as a Bearer token and never logged.
     """
@@ -94,7 +95,7 @@ class OpenAICompatibleClient:
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "OpenAICompatibleClient":
-        if settings.llm_provider not in ("nim", "openrouter"):
+        if settings.llm_provider not in ("nim", "openrouter", "lmstudio", "deepinfra"):
             raise ValueError(f"unsupported LLM_PROVIDER: {settings.llm_provider!r}")
         return cls(
             base_url=settings.llm_base_url,

@@ -12,7 +12,7 @@ from app.checkout.service import CheckoutService, OrderService
 from app.policy import PolicyService, load_policies
 from app.retrieval.bm25 import ProductIndex
 from app.retrieval.corpus import load_products, load_reviews
-from app.state.models import Cart
+from app.state.models import Cart, ConfirmationStatus
 
 
 @dataclass(frozen=True)
@@ -34,6 +34,19 @@ def _s(name: str, properties: dict, required: list[str]) -> dict:
 
 def _cart_of(ctx: dict) -> Cart:
     return ctx.setdefault("cart", Cart())
+
+
+def _cart_matches_snapshot(cart: Cart, snapshot: Cart) -> bool:
+    """True when the live cart is the exact trolley the slip was cut for."""
+    if (cart.currency or "") != (snapshot.currency or ""):
+        return False
+    if len(cart.items) != len(snapshot.items):
+        return False
+
+    def key(i):
+        return (i.product_id, i.quantity, round(i.unit_price, 2))
+
+    return sorted(map(key, cart.items)) == sorted(map(key, snapshot.items))
 
 
 def build_tools(
@@ -120,7 +133,21 @@ def build_tools(
         return {**cart.model_dump(), "totals": carts.totals(cart)}
 
     def prepare_checkout(args: dict, ctx: dict) -> dict:
-        co = checkout.prepare(_cart_of(ctx))
+        cart = _cart_of(ctx)
+        standing = ctx.get("checkout")
+        # Re-preparing the same trolley is a no-op: the standing slip (and its
+        # confirmation code) stays valid. A confused model, a double tap, or a
+        # shopper asking to "confirm" in chat can then never rotate the slip
+        # out from under the shopper or orphan the code on screen. A changed
+        # cart or a cancelled/completed slip mints a fresh one.
+        if (
+            standing is not None
+            and standing.status
+            in (ConfirmationStatus.AWAITING_CONFIRMATION, ConfirmationStatus.CONFIRMED)
+            and _cart_matches_snapshot(cart, standing.cart_snapshot)
+        ):
+            return standing.model_dump()
+        co = checkout.prepare(cart)
         co = checkout.request_confirmation(co)
         ctx["checkout"] = co
         return co.model_dump()
