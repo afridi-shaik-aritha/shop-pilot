@@ -5,6 +5,7 @@ from rank_bm25 import BM25Okapi
 
 from app.models import Product
 from app.retrieval.corpus import normalize_text, product_to_document
+from app.retrieval.filters import apply_filters
 
 
 @dataclass(frozen=True)
@@ -20,8 +21,11 @@ class ProductIndex:
     in_stock (bool, True keeps availability=True and stock>0).
     """
 
+    variant = "bm25"
+
     def __init__(self, products: list[Product]) -> None:
         self._products = list(products)
+        self._pos = {id(p): i for i, p in enumerate(self._products)}
         tokenized = [normalize_text(product_to_document(p)) for p in self._products]
         self._bm25 = BM25Okapi(tokenized)
 
@@ -34,28 +38,13 @@ class ProductIndex:
         tokens = normalize_text(query)
         if not tokens:
             return []
-        candidates = self._apply_filters(filters)
+        candidates = apply_filters(self._products, filters)
         if not candidates:
             return []
-        idx = [self._products.index(p) for p in candidates]
         scores = self._bm25.get_scores(tokens)
         ranked = sorted(
-            (RankedProduct(product=p, score=float(scores[i])) for p, i in zip(candidates, idx)),
+            (RankedProduct(product=p, score=float(scores[self._pos[id(p)]])) for p in candidates),
             key=lambda r: r.score,
             reverse=True,
         )
         return ranked[: max(top_k, 0)]
-
-    def _apply_filters(self, filters: dict | None) -> list[Product]:
-        if not filters:
-            return list(self._products)
-        out = []
-        for p in self._products:
-            if "max_price" in filters and p.price > float(filters["max_price"]):
-                continue
-            if "category" in filters and p.category != filters["category"]:
-                continue
-            if filters.get("in_stock") and not (p.availability and p.stock > 0):
-                continue
-            out.append(p)
-        return out

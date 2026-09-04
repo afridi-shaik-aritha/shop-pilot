@@ -1,6 +1,9 @@
 """LLM client interface. FakeLLM replays scripted turns in tests/demo.
-Real provider adapter lands in Plan 3; nothing here makes network calls."""
+The OpenAI-compatible client talks to NVIDIA NIM / OpenRouter; nothing in
+this module ever logs the API key."""
 import json as _json
+import random as _random
+import time as _time
 import urllib.request as _urlreq
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol
@@ -15,6 +18,7 @@ if TYPE_CHECKING:
 class ToolCall:
     name: str
     arguments: dict = field(default_factory=dict)
+    id: str = ""
 
 
 @dataclass(frozen=True)
@@ -56,6 +60,7 @@ def to_openai_tools(tools: dict[str, "Tool"]) -> list[dict]:
                         "type": "object",
                         "properties": schema.get("properties", {}),
                         "required": schema.get("required", []),
+                        "additionalProperties": False,
                     },
                 },
             }
@@ -71,13 +76,21 @@ class OpenAICompatibleClient:
     is sent as a Bearer token and never logged.
     """
 
-    def __init__(self, base_url: str, api_key: str, model: str, timeout_s: int = 60) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str,
+        model: str,
+        timeout_s: int = 60,
+        max_attempts: int = 3,
+    ) -> None:
         if not base_url or not api_key or not model:
             raise ValueError("base_url, api_key, and model are all required")
         self._url = base_url.rstrip("/") + "/chat/completions"
         self._api_key = api_key
         self._model = model
         self._timeout_s = timeout_s
+        self._max_attempts = max_attempts  # transient 429s / backend blips / empty 200s
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "OpenAICompatibleClient":
@@ -106,11 +119,62 @@ class OpenAICompatibleClient:
             },
             method="POST",
         )
-        try:
-            with _urlreq.urlopen(request, timeout=self._timeout_s) as response:
-                payload = _json.loads(response.read().decode("utf-8"))
-        except Exception as exc:
-            raise LLMError(f"llm request failed: {type(exc).__name__}: {exc}") from None
+        payload = None
+        for attempt in range(self._max_attempts):
+            try:
+                with _urlreq.urlopen(request, timeout=self._timeout_s) as response:
+                    payload = _json.loads(response.read().decode("utf-8"))
+            except _urlreq.HTTPError as exc:
+                detail = ""
+                try:
+                    raw = exc.read(1024).decode("utf-8", errors="replace")
+                    detail = f": {raw[:500]}" if raw.strip() else ""
+                except Exception:
+                    pass
+                # transient: rate limits, gateway/proxy blips (429, 5xx) plus
+                # 400s carrying provider-backend metadata (free-tier proxies)
+                transient = exc.code == 429 or exc.code in (500, 502, 503, 504) or (
+                    exc.code == 400
+                    and any(
+                        marker in detail.lower()
+                        for marker in ("backend", "upstream", "provider returned error")
+                    )
+                )
+                if transient and attempt < self._max_attempts - 1:
+                    _time.sleep(2.0 * (attempt + 1) + _random.uniform(0, 0.5))
+                    continue
+                raise LLMError(
+                    f"llm request failed: HTTP {exc.code}"
+                ) from None
+            except LLMError:
+                raise
+            except Exception as exc:
+                # Network/timeout errors are transient; programming errors
+                # surface via their own type only when clearly not transient.
+                if attempt < self._max_attempts - 1 and isinstance(
+                    exc, (TimeoutError, ConnectionError, OSError)
+                ):
+                    _time.sleep(2.0 * (attempt + 1) + _random.uniform(0, 0.5))
+                    continue
+                raise LLMError(
+                    f"llm request failed: {type(exc).__name__}"
+                ) from None
+            if (
+                isinstance(payload, dict)
+                and isinstance(payload.get("choices"), list)
+                and payload["choices"]
+                and isinstance(payload["choices"][0], dict)
+                and "message" in payload["choices"][0]
+            ):
+                break  # usable completion
+            # a 200 without a usable completion is usually a provider blip
+            if attempt < self._max_attempts - 1:
+                payload = None
+                _time.sleep(2.0 * (attempt + 1) + _random.uniform(0, 0.5))
+                continue
+            raise LLMError("llm response has no choices[0].message")
+        if payload is None:
+            raise LLMError("llm request failed: no response after retries")
         try:
             message = payload["choices"][0]["message"]
         except (KeyError, IndexError, TypeError):
@@ -129,5 +193,11 @@ class OpenAICompatibleClient:
                 raise LLMError("llm tool arguments are not valid JSON") from None
             if not isinstance(arguments, dict):
                 raise LLMError("llm tool arguments must be an object")
-            calls.append(ToolCall(name=function.get("name", ""), arguments=arguments))
+            calls.append(
+                ToolCall(
+                    name=function.get("name", ""),
+                    arguments=arguments,
+                    id=str(raw.get("id", "") or ""),
+                )
+            )
         return LLMMessage(content=content, tool_calls=calls)

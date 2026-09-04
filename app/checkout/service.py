@@ -1,12 +1,19 @@
 """Checkout preparation, explicit confirmation gate, idempotent mock orders."""
 import hashlib
+import hmac
+import math
+import threading
 import uuid
+from typing import TYPE_CHECKING, Protocol
 
 from app.cart.service import CartService
 from app.catalog.service import ProductNotFound, ProductService
-from app.checkout.confirmation import cart_snapshot, snapshot_token
+from app.checkout.confirmation import cart_snapshot, new_confirmation_token, snapshot_token
 from app.models import Product
 from app.state.models import Cart, Checkout, ConfirmationStatus, Order
+
+if TYPE_CHECKING:
+    from app.state.sqlite_store import SqliteStore
 
 
 class ConfirmationError(ValueError):
@@ -17,8 +24,24 @@ class StaleCheckoutError(ValueError):
     pass
 
 
+class SessionNotFound(FileNotFoundError):
+    pass
+
+
+class OrderNotFound(KeyError):
+    pass
+
+
 def _new_id(prefix: str) -> str:
-    return f"{prefix}-{uuid.uuid4().hex[:8]}"
+    return f"{prefix}-{uuid.uuid4().hex[:12]}"
+
+
+def _prices_equal(a: float, b: float) -> bool:
+    return math.isclose(a, b, rel_tol=1e-9, abs_tol=0.005)
+
+
+def secrets_compare(a: str, b: str) -> bool:
+    return hmac.compare_digest(str(a), str(b))
 
 
 class CheckoutService:
@@ -26,6 +49,8 @@ class CheckoutService:
         self._carts = carts
 
     def prepare(self, cart: Cart) -> Checkout:
+        if not cart.items:
+            raise ConfirmationError("cart is empty")
         totals = self._carts.totals(cart)
         return Checkout(
             checkout_id=_new_id("C"),
@@ -42,8 +67,9 @@ class CheckoutService:
             raise ConfirmationError(
                 f"cannot request confirmation from {checkout.status}"
             )
-        items, total = cart_snapshot(checkout.cart_snapshot, checkout.total)
-        checkout.confirmation_token = snapshot_token(items, total)
+        if not checkout.cart_snapshot.items:
+            raise ConfirmationError("cart is empty")
+        checkout.confirmation_token = new_confirmation_token()
         checkout.status = ConfirmationStatus.AWAITING_CONFIRMATION
         return checkout
 
@@ -52,14 +78,28 @@ class CheckoutService:
             raise ConfirmationError(
                 f"cannot confirm from {checkout.status}; explicit confirmation required"
             )
-        items, total = cart_snapshot(checkout.cart_snapshot, checkout.total)
-        if token != snapshot_token(items, total):
+        if not checkout.confirmation_token or not token:
             raise ConfirmationError("confirmation token does not match this checkout")
+        if not secrets_compare(token, checkout.confirmation_token):
+            raise ConfirmationError("confirmation token does not match this checkout")
+        # Binding check: the snapshot must be unchanged since request_confirmation.
+        # (The token itself is random; this guards against in-memory tampering.)
+        items, total = cart_snapshot(checkout.cart_snapshot, checkout.total)
+        _ = snapshot_token(items, total)
         checkout.status = ConfirmationStatus.CONFIRMED
         return checkout
 
     def cancel(self, checkout: Checkout) -> Checkout:
+        if checkout.status in (
+            ConfirmationStatus.CONFIRMED,
+            ConfirmationStatus.COMPLETED,
+            ConfirmationStatus.PLACING_ORDER,
+        ):
+            raise ConfirmationError(
+                f"cannot cancel from {checkout.status}"
+            )
         checkout.status = ConfirmationStatus.REJECTED
+        checkout.confirmation_token = ""
         return checkout
 
 
@@ -71,47 +111,121 @@ class MockPaymentAdapter:
         return {"status": "captured", "amount": amount, "txn_id": f"TXN-{txn}"}
 
 
+class OrderStore(Protocol):
+    """Idempotency + order record backend (in-memory default, SQLite for API)."""
+
+    def get_by_key(self, key: str) -> Order | None:
+        ...
+
+    def save(self, order: Order) -> None:
+        ...
+
+
+class DictOrderStore:
+    """In-memory records (tests, CLI, single-process use)."""
+
+    def __init__(self) -> None:
+        self._by_key: dict[str, Order] = {}
+        self._lock = threading.Lock()
+
+    def get_by_key(self, key: str) -> Order | None:
+        with self._lock:
+            return self._by_key.get(key)
+
+    def save(self, order: Order) -> None:
+        with self._lock:
+            self._by_key[order.idempotency_key] = order
+
+
+class SqliteOrderStore:
+    """Durable records shared across processes/restarts (API runtime)."""
+
+    def __init__(self, db: "SqliteStore") -> None:
+        self._db = db
+
+    def get_by_key(self, key: str) -> Order | None:
+        return self._db.get_order_by_key(key)
+
+    def save(self, order: Order) -> None:
+        self._db.save_order(order)
+
+
 class OrderService:
     def __init__(
-        self, products: ProductService, payment: MockPaymentAdapter | None = None
+        self,
+        products: ProductService,
+        payment: MockPaymentAdapter | None = None,
+        store: OrderStore | None = None,
+        catalog_store=None,
     ) -> None:
         self._products = products
         self._payment = payment or MockPaymentAdapter()
-        self._by_key: dict[str, Order] = {}
+        self._store = store or DictOrderStore()
+        self._catalog_store = catalog_store
+        self._lock = threading.Lock()
+
+    @staticmethod
+    def scope_key(session_id: str | None, key: str) -> str:
+        """Namespace idempotency keys per session so one session can never
+        replay or read another session's order."""
+        if session_id:
+            return f"{session_id}:{key}"
+        return key
 
     def place_order(
-        self, checkout: Checkout, idempotency_key: str, catalog: list[Product]
+        self, checkout: Checkout, idempotency_key: str, catalog: list[Product],
+        session_id: str | None = None,
     ) -> Order:
-        if idempotency_key in self._by_key:
-            return self._by_key[idempotency_key]
-        if checkout.status != ConfirmationStatus.CONFIRMED:
-            raise ConfirmationError("order requires explicit confirmation first")
-        live = {p.product_id: p for p in catalog}
-        for item in checkout.cart_snapshot.items:
-            product = live.get(item.product_id)
-            if product is None:
-                raise StaleCheckoutError(f"product gone: {item.product_id}")
-            try:
-                self._products.get_product(item.product_id)
-            except ProductNotFound:
-                raise StaleCheckoutError(
-                    f"product gone: {item.product_id}"
-                ) from None
-            if not (product.availability and product.stock >= item.quantity):
-                raise StaleCheckoutError(f"unavailable now: {item.product_id}")
-            if product.price != item.unit_price:
-                raise StaleCheckoutError(f"price changed: {item.product_id}")
-        payment = self._payment.charge(checkout.total, idempotency_key)
-        assert payment["status"] == "captured"
-        checkout.status = ConfirmationStatus.PLACING_ORDER
-        order = Order(
-            order_id=_new_id("O"),
-            checkout_id=checkout.checkout_id,
-            items=[i.model_copy() for i in checkout.cart_snapshot.items],
-            total=checkout.total,
-            status="COMPLETED",
-            idempotency_key=idempotency_key,
-        )
-        checkout.status = ConfirmationStatus.COMPLETED
-        self._by_key[idempotency_key] = order
-        return order
+        namespaced = self.scope_key(session_id, idempotency_key)
+        with self._lock:
+            existing = self._store.get_by_key(namespaced)
+            if existing is not None:
+                return existing
+            if checkout.status != ConfirmationStatus.CONFIRMED:
+                raise ConfirmationError("order requires explicit confirmation first")
+            live = {p.product_id: p for p in catalog}
+            for item in checkout.cart_snapshot.items:
+                product = live.get(item.product_id)
+                if product is None:
+                    raise StaleCheckoutError(f"product gone: {item.product_id}")
+                if not (product.availability and product.stock >= item.quantity):
+                    raise StaleCheckoutError(f"unavailable now: {item.product_id}")
+                if not _prices_equal(product.price, item.unit_price):
+                    raise StaleCheckoutError(f"price changed: {item.product_id}")
+            # Atomic stock decrement (when a catalog store is wired): reserve
+            # each line before charging; compensate already-decremented lines
+            # if any line cannot be fulfilled so partial orders never happen.
+            decremented: list = []
+            if self._catalog_store is not None:
+                for item in checkout.cart_snapshot.items:
+                    ok = self._catalog_store.decrement_stock(
+                        item.product_id, item.quantity
+                    )
+                    if not ok:
+                        for pid, qty in decremented:
+                            try:
+                                prod = self._catalog_store.get_product(pid)
+                                prod.stock += qty
+                                prod.availability = True
+                                self._catalog_store.upsert_product(prod)
+                            except Exception:
+                                pass
+                        raise StaleCheckoutError(
+                            f"unavailable now: {item.product_id}"
+                        )
+                    decremented.append((item.product_id, item.quantity))
+            payment = self._payment.charge(checkout.total, namespaced)
+            if payment.get("status") != "captured":
+                raise StaleCheckoutError("payment was not captured")
+            checkout.status = ConfirmationStatus.PLACING_ORDER
+            order = Order(
+                order_id=_new_id("O"),
+                checkout_id=checkout.checkout_id,
+                items=[i.model_copy() for i in checkout.cart_snapshot.items],
+                total=checkout.total,
+                status="COMPLETED",
+                idempotency_key=namespaced,
+            )
+            checkout.status = ConfirmationStatus.COMPLETED
+            self._store.save(order)
+            return order

@@ -9,6 +9,7 @@ from typing import Any, Callable
 from app.cart.service import CartService
 from app.catalog.service import ProductService, ReviewService
 from app.checkout.service import CheckoutService, OrderService
+from app.policy import PolicyService, load_policies
 from app.retrieval.bm25 import ProductIndex
 from app.retrieval.corpus import load_products, load_reviews
 from app.state.models import Cart
@@ -43,11 +44,21 @@ def build_tools(
     orders: OrderService,
     products_path: str = "data/products.json",
     reviews_path: str = "data/reviews.json",
+    policies_path: str = "data/policies.json",
+    catalog_store=None,
 ) -> dict[str, Tool]:
-    reviews = ReviewService(load_reviews(reviews_path))
+    if catalog_store is not None:
+        reviews = ReviewService(catalog_store.list_reviews())
+    else:
+        reviews = ReviewService(load_reviews(reviews_path))
 
     def search_products(args: dict, ctx: dict) -> dict:
-        filters = {k: v for k, v in args.get("filters", {}).items()}
+        raw_filters = args.get("filters", {})
+        if raw_filters is None:
+            raw_filters = {}
+        if not isinstance(raw_filters, dict):
+            raise ValueError("filters must be an object")
+        filters = {k: v for k, v in raw_filters.items()}
         hits = index.search(args["query"], args.get("top_k", 5), filters or None)
         return {
             "products": [
@@ -57,6 +68,11 @@ def build_tools(
                     "price": r.product.price,
                     "rating": r.product.rating,
                     "score": round(r.score, 3),
+                    "category": r.product.category,
+                    "brand": r.product.brand,
+                    "availability": r.product.availability,
+                    "stock": r.product.stock,
+                    "review_count": r.product.review_count,
                 }
                 for r in hits
             ]
@@ -71,6 +87,15 @@ def build_tools(
                 args["product_id"], args.get("query"), args.get("top_k", 5)
             )
         }
+
+    def search_policy(args: dict, ctx: dict) -> dict:
+        try:
+            rules = PolicyService(load_policies(policies_path)).search(
+                args["query"], args.get("top_k", 5)
+            )
+        except (OSError, ValueError) as exc:
+            return {"error": f"policy corpus unavailable: {type(exc).__name__}"}
+        return {"rules": rules}
 
     def compare_products(args: dict, ctx: dict) -> dict:
         return catalog.compare_products(args["product_ids"])
@@ -110,9 +135,19 @@ def build_tools(
         co = ctx.get("checkout")
         if co is None:
             raise ValueError("no checkout prepared")
-        catalog_live = load_products(products_path)
+        if catalog_store is not None:
+            try:
+                catalog_live = catalog_store.list_products()
+            except (OSError, ValueError) as exc:
+                raise ValueError(f"catalog unavailable: {type(exc).__name__}") from exc
+        else:
+            try:
+                catalog_live = load_products(products_path)
+            except (OSError, ValueError) as exc:
+                raise ValueError(f"catalog unavailable: {type(exc).__name__}") from exc
         return orders.place_order(
-            co, args["idempotency_key"], catalog_live
+            co, args["idempotency_key"], catalog_live,
+            session_id=ctx.get("session_id"),
         ).model_dump()
 
     return {
@@ -129,6 +164,16 @@ def build_tools(
                 ["query"],
             ),
             search_products,
+        ),
+        "search_policy": Tool(
+            "search_policy",
+            "Authoritative store policy rules (shipping, tax, confirmation, returns, payments).",
+            _s(
+                "search_policy",
+                {"query": {"type": "string"}, "top_k": {"type": "integer"}},
+                ["query"],
+            ),
+            search_policy,
         ),
         "get_product": Tool(
             "get_product",

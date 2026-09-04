@@ -1,4 +1,4 @@
-from app.agent import AgentResult, ShoppingAgent
+from app.agent import AgentResult, ShoppingAgent, _model_visible
 from app.cart.service import CartService
 from app.catalog.service import ProductService
 from app.checkout.service import CheckoutService, OrderService
@@ -71,3 +71,84 @@ def test_agent_step_budget_stops_loops():
     res = agent.run("Loop forever", ctx)
     assert res.status == "failed"
     assert res.tool_calls_made == 3
+
+
+class _CaptureLLM:
+    """Records every message list it is asked to complete (no network)."""
+
+    def __init__(self, reply="ok"):
+        self._reply = reply
+        self.seen = []
+
+    def complete(self, messages, tools):
+        self.seen.append(list(messages))
+        return LLMMessage(content=self._reply, tool_calls=[])
+
+
+def test_agent_replays_plain_history_only_and_truncates():
+    cap = _CaptureLLM()
+    agent = ShoppingAgent(llm=cap, tools={}, system_prompt="sys")
+    agent.run(
+        "buy it",
+        {"cart": Cart(), "checkout": None},
+        history=[
+            {"role": "user", "content": "earlier ask"},
+            {"role": "assistant", "content": "earlier reply"},
+            {"role": "system", "content": "drop me"},
+            {"role": "tool", "name": "x", "content": "drop me too"},
+            {"role": "user", "content": "z" * 5000},
+        ],
+    )
+    msgs = cap.seen[0]
+    roles = [m["role"] for m in msgs]
+    assert roles == ["system", "user", "assistant", "user", "user"]
+    assert msgs[1]["content"] == "earlier ask"
+    assert msgs[2]["content"] == "earlier reply"
+    assert len(msgs[3]["content"]) == 4000  # truncated, not dropped
+    assert msgs[4]["content"] == "buy it"  # current turn is never dropped
+    assert msgs[0]["content"] == "sys"
+
+
+def test_model_visible_redacts_confirmation_token():
+    raw = {
+        "status": "AWAITING_CONFIRMATION",
+        "total": 10028.82,
+        "confirmation_token": "tok-secret-123",
+    }
+    visible = _model_visible(raw)
+    assert visible["status"] == "AWAITING_CONFIRMATION"
+    assert visible["total"] == 10028.82
+    assert visible["confirmation_token"] != "tok-secret-123"
+    assert "tok-secret-123" not in str(visible)
+
+
+def test_agent_never_sees_confirmation_token_in_prepare():
+    """prepare_checkout succeeds, but the token never reaches the model text."""
+    from app.cart.service import CartService as _CartService
+
+    products = load_products("data/products.json")
+    catalog = ProductService(products)
+    carts = _CartService(catalog)
+    tools = build_tools(
+        ProductIndex(products), catalog, carts, CheckoutService(carts), OrderService(catalog)
+    )
+    agent = ShoppingAgent(
+        llm=FakeLLM(
+            [
+                LLMMessage(
+                    content="",
+                    tool_calls=[ToolCall(name="prepare_checkout", arguments={})],
+                ),
+                LLMMessage(content="The slip is ready.", tool_calls=[]),
+            ]
+        ),
+        tools={k: v for k, v in tools.items() if k in ("prepare_checkout", "get_cart")},
+    )
+    ctx = {"cart": Cart(), "checkout": None}
+    carts.add_to_cart(ctx["cart"], "P01", 1)
+    res = agent.run("Check me out", ctx)
+    assert res.status == "ok"
+    assert "[redacted" in str(res.trace)
+    assert "tok-secret-123" not in "".join(str(t) for t in res.trace)
+    # token stayed in the real checkout state, just not in the model trace
+    assert ctx["checkout"].confirmation_token

@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Shop-Pilot — the assistant that shops with you</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23ffd43b' stroke='%231b1712' stroke-width='4'/%3E%3Cpath d='M18 22h6l5 24h18l4-16H27' fill='none' stroke='%231b1712' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,640;0,9..144,700;1,9..144,600&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo-sticker" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 7h12l-1.4 11a2 2 0 0 1-2 1.8H9.4a2 2 0 0 1-2-1.8L6 7z"/><path d="M9 10V6a3 3 0 0 1 6 0v4"/>
+          </svg>
+        </div>
+        <div>
+          <h1>Shop-Pilot</h1>
+          <p>an assistant that shops with you</p>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <span id="llmBadge" class="badge badge-pending">checking llm…</span>
+        <button id="newChat" class="btn btn-ghost btn-sm" type="button">↻ New session</button>
+      </div>
+    </header>
+
+    <div class="ticker" aria-hidden="true">
+      <div class="ticker-track">
+        <span>no order is ever placed without <b>your</b> confirmation</span><span>every price is read from the catalog — <b>nothing is invented</b></span><span>review text is <b>data</b>, never instructions</span><span>mock payments only · <b>no real money</b></span>
+        <span>no order is ever placed without <b>your</b> confirmation</span><span>every price is read from the catalog — <b>nothing is invented</b></span><span>review text is <b>data</b>, never instructions</span><span>mock payments only · <b>no real money</b></span>
+      </div>
+    </div>
+
+    <main class="layout">
+      <section class="chat-col" aria-label="Assistant chat">
+        <div id="messages" class="messages" role="log" aria-live="polite" aria-relevant="additions">
+          <div id="greeting" class="greeting">
+            <span class="kicker">the good-stuff finder</span>
+            <h2>What are we<br />shopping for <em>today?</em></h2>
+            <p class="lede">Tell Shop-Pilot the thing, the budget, the vibe. It hunts the catalog, checks reviews, drops it in your trolley — and only places an order when <b>you</b> say so.</p>
+            <div class="chips" id="greetChips">
+              <button class="chip" data-q="I need wireless headphones under ₹10,000 with good battery life and good reviews"><span>Headphones under ₹10k</span><span class="arr">→</span></button>
+              <button class="chip" data-q="Find a portable bluetooth speaker with deep bass for picnics"><span>Speaker, deep bass</span><span class="arr">→</span></button>
+              <button class="chip" data-q="Show me a smartwatch with heart-rate tracking"><span>Heart-rate smartwatch</span><span class="arr">→</span></button>
+              <button class="chip" data-q="Compare the best wireless headphones with the budget option"><span>Compare two headphones</span><span class="arr">→</span></button>
+            </div>
+            <p class="fine"><b>✳</b> try one — or just type your own wish list below</p>
+          </div>
+        </div>
+        <div class="composer">
+          <form id="composerForm" autocomplete="off">
+            <label class="sr-only" for="input">Message the shopping assistant</label>
+            <textarea id="input" rows="1" aria-label="Message the shopping assistant" placeholder="e.g. “wireless headphones under 10000 with battery” — shift+enter for a new line"></textarea>
+            <button id="send" class="btn btn-primary" type="submit" aria-label="Send">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+              <span>Go</span>
+            </button>
+          </form>
+        </div>
+      </section>
+
+      <aside class="side-col" aria-label="Cart and checkout">
+        <section id="cartPanel" class="panel">
+          <div class="panel-head">
+            <h3><b>Your</b> trolley</h3>
+            <span id="cartCount" class="count" hidden></span>
+          </div>
+          <div id="cartBody" class="panel-body empty">Empty for now. Ask the assistant to add the good stuff, or pick from a search.</div>
+        </section>
+
+        <section id="checkoutPanel" class="panel">
+          <div class="panel-head"><h3><b>The</b> order slip</h3></div>
+          <div id="checkoutBody" class="panel-body empty">Nothing on the slip yet. Fill the trolley, then <b>Prepare checkout</b> to review what you'd be ordering.</div>
+        </section>
+      </aside>
+    </main>
+
+    <div id="modalRoot"></div>
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  </div>
+  <script src="/static/mock.js"></script>
+  <script type="module" src="/static/app.js"></script>
+</body>
+</html>

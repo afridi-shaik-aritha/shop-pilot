@@ -13,6 +13,12 @@ class ProductService:
     def __init__(self, products: list[Product]) -> None:
         self._by_id = {p.product_id: p for p in products}
 
+    def refresh(self, products: list[Product]) -> None:
+        self._by_id = {p.product_id: p for p in products}
+
+    def list_all(self) -> list[Product]:
+        return list(self._by_id.values())
+
     def get_product(self, product_id: str) -> Product:
         try:
             return self._by_id[product_id]

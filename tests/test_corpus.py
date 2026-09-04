@@ -27,5 +27,5 @@ def test_product_to_document_contains_searchable_terms():
 
 def test_load_reviews():
     reviews = load_reviews("data/reviews.json")
-    assert len(reviews) == 4
-    assert {r.product_id for r in reviews} <= {"P01", "P02", "P04"}
+    assert len(reviews) == 6
+    assert {r.product_id for r in reviews} <= {"P01", "P02", "P04", "P05"}

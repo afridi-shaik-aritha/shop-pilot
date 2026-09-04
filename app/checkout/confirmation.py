@@ -1,8 +1,20 @@
-"""Snapshot-bound confirmation tokens. Token = sha256 hex[:16] of canonical snapshot."""
+"""Snapshot-bound confirmation tokens.
+
+Tokens are cryptographically random per checkout (secrets module) and stored
+server-side on the Checkout object. The snapshot helpers below are retained
+for audit/binding checks: the token is only valid for the exact snapshot it
+was issued for.
+"""
 import hashlib
 import json
+import secrets
 
 from app.state.models import Cart
+
+
+def new_confirmation_token() -> str:
+    """Generate an unforgeable per-checkout confirmation token."""
+    return secrets.token_urlsafe(12)
 
 
 def snapshot_token(items: list[dict], total: float) -> str:

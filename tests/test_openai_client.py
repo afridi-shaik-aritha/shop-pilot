@@ -20,17 +20,24 @@ class _Handler(BaseHTTPRequestHandler):
     response_body: object = {}
     status: int = 200
     seen: dict = {}
+    calls: int = 0
+    sequence: list | None = None  # when set, one body per request in order
 
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
         raw = self.rfile.read(length) if length else b"{}"
+        type(self).calls += 1
         type(self).seen = {
             "path": self.path,
             "auth": self.headers.get("Authorization"),
             "content_type": self.headers.get("Content-Type"),
             "body": json.loads(raw.decode("utf-8")),
         }
-        data = json.dumps(type(self).response_body).encode("utf-8")
+        if isinstance(type(self).sequence, list) and type(self).sequence:
+            body = type(self).sequence.pop(0)
+        else:
+            body = type(self).response_body
+        data = json.dumps(body).encode("utf-8")
         self.send_response(type(self).status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(data)))
@@ -44,8 +51,10 @@ class _Handler(BaseHTTPRequestHandler):
 @pytest.fixture()
 def api():
     _Handler.seen = {}
+    _Handler.calls = 0
     _Handler.response_body = {}
     _Handler.status = 200
+    _Handler.sequence = None
     server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -81,7 +90,8 @@ def test_to_openai_tools_shape():
             "function": {
                 "name": "get_cart",
                 "description": "Read the cart.",
-                "parameters": {"type": "object", "properties": {}, "required": []},
+                "parameters": {"type": "object", "properties": {}, "required": [],
+                               "additionalProperties": False},
             },
         }
     ]
@@ -92,6 +102,7 @@ def test_chat_with_tool_call(api):
     msg = _client(api).complete([{"role": "user", "content": "hi"}], {"x": _StubTool("x", "Use x.", {"name": "x", "type": "object", "properties": {}, "required": []})})
     assert msg.tool_calls[0].name == "get_cart"
     assert msg.tool_calls[0].arguments == {}
+    assert msg.tool_calls[0].id == "1"  # provider tool-call ids round-trip
     assert _Handler.seen["path"] == "/v1/chat/completions"
     assert _Handler.seen["auth"] == "Bearer sk-test"
     assert _Handler.seen["content_type"] == "application/json"
@@ -112,19 +123,28 @@ def test_http_error_raises(api):
     _Handler.response_body = {"error": "boom"}
     _Handler.status = 500
     with pytest.raises(LLMError):
-        _client(api).complete([], [])
+        _client(api, max_attempts=1).complete([], [])
 
 
 def test_garbage_body_raises(api):
     _Handler.response_body = "oops"
     with pytest.raises(LLMError):
-        _client(api).complete([], [])
+        _client(api, max_attempts=1).complete([], [])
 
 
 def test_missing_choices_raises(api):
     _Handler.response_body = {}
     with pytest.raises(LLMError):
-        _client(api).complete([], [])
+        _client(api, max_attempts=1).complete([], [])
+
+
+def test_empty_choices_retried_then_succeeds(api):
+    # a 200 without a usable completion is a transient provider blip: the
+    # client backs off and retries instead of failing the agent turn
+    _Handler.sequence = [{}, _chat_msg("hello again", [])]
+    msg = _client(api, max_attempts=2).complete([{"role": "user", "content": "hi"}], {})
+    assert _Handler.calls == 2
+    assert msg.content == "hello again"
 
 
 def test_bad_tool_arguments_raise(api):

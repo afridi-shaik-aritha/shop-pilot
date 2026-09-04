@@ -28,4 +28,6 @@ def constraint_match(product: Product, constraints: dict) -> bool:
         return False
     if "category" in constraints and product.category != constraints["category"]:
         return False
+    if constraints.get("in_stock") and not (product.availability and product.stock > 0):
+        return False
     return True

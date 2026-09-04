@@ -54,3 +54,6 @@ class ShoppingSession(BaseModel):
     checkout: Checkout | None = None
     order: Order | None = None
     history: list[dict] = Field(default_factory=list)
+    # Recent plain-language turns ({"role": "user"|"assistant", "content": str})
+    # replayed into /chat for multi-turn context; capped by the API layer.
+    messages: list[dict] = Field(default_factory=list)

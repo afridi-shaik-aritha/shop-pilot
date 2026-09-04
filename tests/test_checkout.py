@@ -30,13 +30,15 @@ def _confirmed_p01():
 
 
 def test_prepare_and_confirm_flow():
-    _, _, checkout, _ = _wired()
-    co = checkout.prepare(Cart())
+    _, carts, checkout, _ = _wired()
+    cart = Cart()
+    carts.add_to_cart(cart, "P01", 1)
+    co = checkout.prepare(cart)
     assert co.status == ConfirmationStatus.CHECKOUT_PREPARED
     assert co.confirmation_token == ""
     co = checkout.request_confirmation(co)
     assert co.status == ConfirmationStatus.AWAITING_CONFIRMATION
-    assert len(co.confirmation_token) == 16
+    assert len(co.confirmation_token) >= 16
     co = checkout.confirm(co, co.confirmation_token)
     assert co.status == ConfirmationStatus.CONFIRMED
     with pytest.raises(ConfirmationError):
@@ -44,12 +46,20 @@ def test_prepare_and_confirm_flow():
 
 
 def test_confirm_wrong_token_and_cancel():
-    _, _, checkout, _ = _wired()
-    co = checkout.request_confirmation(checkout.prepare(Cart()))
+    _, carts, checkout, _ = _wired()
+    cart = Cart()
+    carts.add_to_cart(cart, "P01", 1)
+    co = checkout.request_confirmation(checkout.prepare(cart))
     with pytest.raises(ConfirmationError):
         checkout.confirm(co, "deadbeefdeadbeef")
     co = checkout.cancel(co)
     assert co.status == ConfirmationStatus.REJECTED
+
+
+def test_prepare_empty_cart_rejected():
+    _, _, checkout, _ = _wired()
+    with pytest.raises(ConfirmationError):
+        checkout.prepare(Cart())
 
 
 def test_token_bound_to_snapshot():
@@ -63,8 +73,10 @@ def test_token_bound_to_snapshot():
 
 
 def test_place_order_requires_confirmation():
-    _, _, checkout, orders = _wired()
-    co = checkout.request_confirmation(checkout.prepare(Cart()))
+    _, carts, checkout, orders = _wired()
+    cart = Cart()
+    carts.add_to_cart(cart, "P01", 1)
+    co = checkout.request_confirmation(checkout.prepare(cart))
     with pytest.raises(ConfirmationError):
         orders.place_order(co, "key-1", load_products("data/products.json"))
 
