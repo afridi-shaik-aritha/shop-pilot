@@ -8,6 +8,16 @@ A shopping assistant that takes a natural-language request through retrieval →
 
 **State:** local SQLite (stdlib, WAL) at `ASA_DB_PATH` for sessions, idempotency keys, orders, redacted traces, and the product/review catalog (seeded from `data/*.json` on first boot; JSON remains the version-controlled seed). Placing an order atomically decrements stock; out-of-stock lines are rejected at placement.
 
+## Architecture
+
+The whole system is mapped as an interactive, self-contained diagram (dark/light themes; guided views walk the primary request path, the human confirmation ceremony, and the deterministic core):
+
+![Shop-Pilot runtime architecture](assets/architecture.png)
+
+- **Interactive map:** `docs/architecture/shop-pilot-architecture.html` — open in any browser, no build or network needed. Search nodes, focus a component, probe the request path.
+- **Editable source:** `docs/architecture/shop-pilot.architecture.json` (typed JSON IR; regenerate the HTML with the archify CLI).
+- **The one picture to remember:** every chat message passes deterministic gates before any LLM runs; the model picks tools within a role's allowlist; and confirm/place/void exist only behind the human slip — no LLM path ever touches final state.
+
 ---
 
 ## Web UI (recommended)
@@ -204,6 +214,7 @@ data/          products.json · reviews.json · policies.json (catalog seeds)
 evaluation/    dataset · metrics · retrieval/experiment/safety/response/llm-judge runners
 demo/          interactive CLI · live routed smoke (live_chat.py) · recorded demo (demo/recording.md)
 docs/          design specs · implementation plans
+  architecture/  interactive runtime map: shop-pilot-architecture.html + typed JSON source
 ```
 
 Design and requirements: `docs/superpowers/specs/2026-09-03-ai-shopping-assistant-design.md` (base system) and `docs/superpowers/specs/2026-09-04-catalog-sqlite-design.md` (SQLite catalog). Every deviation from the source requirements is logged in `IMPLEMENTATION_DECISIONS.md`.
