@@ -73,7 +73,8 @@ def test_hybrid_empty_query_and_top_k():
 
 def test_reranker_reorders_fused_results():
     plain = _hybrid()
-    reranked = _hybrid(reranker=ReverseReranker())
+    # window == top_k so the reversal expectation holds at any catalog size
+    reranked = _hybrid(reranker=ReverseReranker(), rerank_top_n=6)
     results_plain = plain.search("wireless headphones battery", top_k=6)
     results_reranked = reranked.search("wireless headphones battery", top_k=6)
     assert _ids(results_reranked) == list(reversed(_ids(results_plain)))

@@ -173,6 +173,19 @@ body::before {
 .bubble .plain { white-space: pre-wrap; }
 .msg.user .bubble .plain { color: var(--paper); }
 .bubble b, .bubble strong { font-weight: 700; }
+.bubble h3 { font-family: var(--font-disp); font-size: 19px; letter-spacing: -0.01em; margin: 12px 0 6px; line-height: 1.25; }
+.bubble h4 { font-size: 15px; margin: 12px 0 5px; line-height: 1.35; }
+.bubble h5 { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-soft); margin: 12px 0 5px; }
+.bubble h3:first-child, .bubble h4:first-child, .bubble h5:first-child, .bubble p:first-child { margin-top: 0; }
+.bubble p { margin: 0 0 8px; }
+.bubble p:last-child { margin-bottom: 0; }
+.bubble hr { border: none; border-top: 1.5px dashed var(--line); margin: 10px 0; }
+.md-list { margin: 4px 0 10px; padding-left: 20px; }
+.md-list li { margin: 3px 0; font-size: 14px; line-height: 1.55; }
+.md-table { display: block; overflow-x: auto; width: 100%; border-collapse: collapse; margin: 8px 0 10px; font-size: 12.5px; line-height: 1.45; }
+.md-table th, .md-table td { border: 1.5px solid var(--line-strong); padding: 6px 9px; text-align: left; vertical-align: top; }
+.md-table th { background: var(--cream-chip); font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; }
+.md-table tbody tr:nth-child(even) td { background: rgba(239, 234, 221, 0.5); }
 .msg.bot .bubble strong { background: linear-gradient(transparent 62%, rgba(255, 212, 59, 0.85) 0); }
 .bubble code { font-family: var(--font-mono); font-size: 0.88em; background: var(--paper-2); padding: 1px 5px; border-radius: 5px; }
 .msg.user .bubble code { background: rgba(255, 255, 255, 0.14); }

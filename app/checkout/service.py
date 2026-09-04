@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Protocol
 
 from app.cart.service import CartService
 from app.catalog.service import ProductNotFound, ProductService
-from app.checkout.confirmation import cart_snapshot, new_confirmation_token, snapshot_token
+from app.checkout.confirmation import new_confirmation_token
 from app.models import Product
 from app.state.models import Cart, Checkout, ConfirmationStatus, Order
 
@@ -82,10 +82,6 @@ class CheckoutService:
             raise ConfirmationError("confirmation token does not match this checkout")
         if not secrets_compare(token, checkout.confirmation_token):
             raise ConfirmationError("confirmation token does not match this checkout")
-        # Binding check: the snapshot must be unchanged since request_confirmation.
-        # (The token itself is random; this guards against in-memory tampering.)
-        items, total = cart_snapshot(checkout.cart_snapshot, checkout.total)
-        _ = snapshot_token(items, total)
         checkout.status = ConfirmationStatus.CONFIRMED
         return checkout
 

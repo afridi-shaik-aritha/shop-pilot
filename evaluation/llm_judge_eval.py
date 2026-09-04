@@ -51,7 +51,7 @@ def _scenario_runs() -> list[dict]:
                 tool_calls=[
                     ToolCall(
                         name="search_products",
-                        arguments={"query": "wireless headphones", "top_k": 2},
+                        arguments={"query": "wireless headphones long battery life", "top_k": 2},
                     )
                 ],
             ),

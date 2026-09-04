@@ -1,1 +1,790 @@
-[{"availability": true, "brand": "SonicWave", "category": "wireless headphones", "description": "Wireless over-ear headphones with long 60-hour battery life and comfortable fit.", "name": "SonicWave X5 Wireless Headphones", "price": 8499.0, "product_id": "P01", "rating": 4.4, "review_count": 2314, "specs": {"battery_hours": 60, "bluetooth": "5.3", "weight_g": 254}, "stock": 42}, {"availability": true, "brand": "BassBoom", "category": "wireless headphones", "description": "Bass-heavy wireless headphones with active noise cancellation and 40-hour battery.", "name": "BassBoom Pro Wireless Headphones", "price": 12999.0, "product_id": "P02", "rating": 4.6, "review_count": 1871, "specs": {"battery_hours": 40, "bluetooth": "5.2", "weight_g": 281}, "stock": 17}, {"availability": true, "brand": "ClearTone", "category": "wired earphones", "description": "Budget wired in-ear earphones with microphone for calls.", "name": "ClearTone Wired Earphones", "price": 999.0, "product_id": "P03", "rating": 4.1, "review_count": 5420, "specs": {"weight_g": 18}, "stock": 200}, {"availability": true, "brand": "ThunderBox", "category": "bluetooth speaker", "description": "Portable bluetooth speaker with deep bass, 24-hour playtime and splash resistance.", "name": "ThunderBox Bluetooth Speaker", "price": 5999.0, "product_id": "P04", "rating": 4.5, "review_count": 3102, "specs": {"battery_hours": 24, "weight_g": 680}, "stock": 63}, {"availability": true, "brand": "PulseFit", "category": "smartwatch", "description": "Smartwatch with heart rate tracking, SpO2 sensor and 10-day battery.", "name": "PulseFit S2 Smartwatch", "price": 7999.0, "product_id": "P05", "rating": 4.3, "review_count": 1290, "specs": {"battery_days": 10, "weight_g": 36}, "stock": 88}, {"availability": false, "brand": "SonicWave", "category": "wireless headphones", "description": "Refurbished wireless headphones, same 60-hour battery, limited warranty.", "name": "SonicWave X5 Refurbished Unit", "price": 6499.0, "product_id": "P06", "rating": 4.0, "review_count": 412, "specs": {"battery_hours": 60, "weight_g": 254}, "stock": 0}]
+[
+  {
+    "availability": true,
+    "brand": "SonicWave",
+    "category": "wireless headphones",
+    "description": "Wireless over-ear headphones with long 60-hour battery life and comfortable fit.",
+    "name": "SonicWave X5 Wireless Headphones",
+    "price": 8499.0,
+    "product_id": "P01",
+    "rating": 4.4,
+    "review_count": 2314,
+    "specs": {
+      "battery_hours": 60,
+      "bluetooth": "5.3",
+      "weight_g": 254
+    },
+    "stock": 42
+  },
+  {
+    "availability": true,
+    "brand": "BassBoom",
+    "category": "wireless headphones",
+    "description": "Bass-heavy wireless headphones with active noise cancellation and 40-hour battery.",
+    "name": "BassBoom Pro Wireless Headphones",
+    "price": 12999.0,
+    "product_id": "P02",
+    "rating": 4.6,
+    "review_count": 1871,
+    "specs": {
+      "battery_hours": 40,
+      "bluetooth": "5.2",
+      "weight_g": 281
+    },
+    "stock": 17
+  },
+  {
+    "availability": true,
+    "brand": "ClearTone",
+    "category": "wired earphones",
+    "description": "Budget wired in-ear earphones with microphone for calls.",
+    "name": "ClearTone Wired Earphones",
+    "price": 999.0,
+    "product_id": "P03",
+    "rating": 4.1,
+    "review_count": 5420,
+    "specs": {
+      "weight_g": 18
+    },
+    "stock": 200
+  },
+  {
+    "availability": true,
+    "brand": "ThunderBox",
+    "category": "bluetooth speaker",
+    "description": "Portable bluetooth speaker with deep bass, 24-hour playtime and splash resistance.",
+    "name": "ThunderBox Bluetooth Speaker",
+    "price": 5999.0,
+    "product_id": "P04",
+    "rating": 4.5,
+    "review_count": 3102,
+    "specs": {
+      "battery_hours": 24,
+      "weight_g": 680
+    },
+    "stock": 63
+  },
+  {
+    "availability": true,
+    "brand": "PulseFit",
+    "category": "smartwatch",
+    "description": "Smartwatch with heart rate tracking, SpO2 sensor and 10-day battery.",
+    "name": "PulseFit S2 Smartwatch",
+    "price": 7999.0,
+    "product_id": "P05",
+    "rating": 4.3,
+    "review_count": 1290,
+    "specs": {
+      "battery_days": 10,
+      "weight_g": 36
+    },
+    "stock": 88
+  },
+  {
+    "availability": false,
+    "brand": "SonicWave",
+    "category": "wireless headphones",
+    "description": "Refurbished wireless headphones, same 60-hour battery, limited warranty.",
+    "name": "SonicWave X5 Refurbished Unit",
+    "price": 6499.0,
+    "product_id": "P06",
+    "rating": 4.0,
+    "review_count": 412,
+    "specs": {
+      "battery_hours": 60,
+      "weight_g": 254
+    },
+    "stock": 0
+  },
+  {
+    "availability": true,
+    "brand": "AudioNest",
+    "category": "wireless headphones",
+    "description": "Closed-back wireless headphones with hybrid noise cancellation and 45-hour playback on a single charge.",
+    "name": "AudioNest Hush One Wireless Headphones",
+    "price": 9999.0,
+    "product_id": "P07",
+    "rating": 4.3,
+    "review_count": 864,
+    "specs": {
+      "battery_hours": 45,
+      "bluetooth": "5.3",
+      "weight_g": 262
+    },
+    "stock": 25
+  },
+  {
+    "availability": true,
+    "brand": "BeatCraft",
+    "category": "wireless headphones",
+    "description": "Flagship wireless headphones with studio-tuned drivers and plush memory-foam cushions.",
+    "name": "BeatCraft Studio Max Wireless Headphones",
+    "price": 14999.0,
+    "product_id": "P08",
+    "rating": 4.7,
+    "review_count": 1204,
+    "specs": {
+      "battery_hours": 38,
+      "bluetooth": "5.4",
+      "weight_g": 295
+    },
+    "stock": 12
+  },
+  {
+    "availability": true,
+    "brand": "EchoPods",
+    "category": "wireless headphones",
+    "description": "Lightweight wireless headphones with punchy sound and fast charging \u2014 10 minutes gives 5 hours.",
+    "name": "EchoPods Lite Wireless Headphones",
+    "price": 4999.0,
+    "product_id": "P09",
+    "rating": 4.0,
+    "review_count": 2310,
+    "specs": {
+      "battery_hours": 35,
+      "bluetooth": "5.2",
+      "weight_g": 210
+    },
+    "stock": 60
+  },
+  {
+    "availability": false,
+    "brand": "SoundLoom",
+    "category": "wireless headphones",
+    "description": "Foldable wireless headphones with multipoint pairing for laptop and phone.",
+    "name": "SoundLoom Travel Wireless Headphones",
+    "price": 7999.0,
+    "product_id": "P10",
+    "rating": 4.2,
+    "review_count": 540,
+    "specs": {
+      "battery_hours": 40,
+      "bluetooth": "5.3",
+      "weight_g": 240
+    },
+    "stock": 0
+  },
+  {
+    "availability": true,
+    "brand": "RumbleBox",
+    "category": "bluetooth speaker",
+    "description": "Room-filling bluetooth speaker with thumping bass and LED light ring for house parties.",
+    "name": "RumbleBox Party Bluetooth Speaker",
+    "price": 8999.0,
+    "product_id": "P11",
+    "rating": 4.4,
+    "review_count": 976,
+    "specs": {
+      "battery_hours": 18,
+      "weight_g": 1200
+    },
+    "stock": 34
+  },
+  {
+    "availability": true,
+    "brand": "SoundCrest",
+    "category": "bluetooth speaker",
+    "description": "Pocket-size bluetooth speaker with clear mids and 12-hour playback for daily use.",
+    "name": "SoundCrest Mini Bluetooth Speaker",
+    "price": 2999.0,
+    "product_id": "P12",
+    "rating": 4.2,
+    "review_count": 3420,
+    "specs": {
+      "battery_hours": 12,
+      "weight_g": 340
+    },
+    "stock": 120
+  },
+  {
+    "availability": true,
+    "brand": "BassNest",
+    "category": "bluetooth speaker",
+    "description": "Rugged bluetooth speaker with deep bass radiator and IPX7 waterproofing for poolside days.",
+    "name": "BassNest Outdoor Bluetooth Speaker",
+    "price": 7499.0,
+    "product_id": "P13",
+    "rating": 4.5,
+    "review_count": 689,
+    "specs": {
+      "battery_hours": 20,
+      "weight_g": 820
+    },
+    "stock": 28
+  },
+  {
+    "availability": true,
+    "brand": "WristFit",
+    "category": "smartwatch",
+    "description": "AMOLED smartwatch with dual-band GPS, heart rate variability and 14-day battery.",
+    "name": "WristFit GTR Smartwatch",
+    "price": 10999.0,
+    "product_id": "P14",
+    "rating": 4.5,
+    "review_count": 743,
+    "specs": {
+      "battery_days": 14,
+      "weight_g": 42
+    },
+    "stock": 41
+  },
+  {
+    "availability": true,
+    "brand": "BeatBand",
+    "category": "smartwatch",
+    "description": "Slim smartwatch with all-day heart rate monitoring, step counting and 7-day battery.",
+    "name": "BeatBand Active Smartwatch",
+    "price": 4999.0,
+    "product_id": "P15",
+    "rating": 4.1,
+    "review_count": 1876,
+    "specs": {
+      "battery_days": 7,
+      "weight_g": 29
+    },
+    "stock": 95
+  },
+  {
+    "availability": false,
+    "brand": "OrbitWatch",
+    "category": "smartwatch",
+    "description": "Steel smartwatch with ECG, blood oxygen and wireless charging.",
+    "name": "OrbitWatch Classic Smartwatch",
+    "price": 14999.0,
+    "product_id": "P16",
+    "rating": 4.6,
+    "review_count": 312,
+    "specs": {
+      "battery_days": 5,
+      "weight_g": 58
+    },
+    "stock": 0
+  },
+  {
+    "availability": true,
+    "brand": "WireTune",
+    "category": "wired earphones",
+    "description": "Hi-res certified wired earphones with braided cable and in-line controls.",
+    "name": "WireTune Pro Wired Earphones",
+    "price": 1499.0,
+    "product_id": "P17",
+    "rating": 4.3,
+    "review_count": 2874,
+    "specs": {
+      "weight_g": 22
+    },
+    "stock": 150
+  },
+  {
+    "availability": true,
+    "brand": "AudioPlug",
+    "category": "wired earphones",
+    "description": "Extra-bass wired earphones with snug fit for workouts.",
+    "name": "AudioPlug Bass Wired Earphones",
+    "price": 699.0,
+    "product_id": "P18",
+    "rating": 3.9,
+    "review_count": 4102,
+    "specs": {
+      "weight_g": 16
+    },
+    "stock": 300
+  },
+  {
+    "availability": true,
+    "brand": "VoltBook",
+    "category": "laptop",
+    "description": "Thin 14-inch laptop with 16GB RAM, 512GB SSD and 18-hour battery for workdays.",
+    "name": "VoltBook Air 14 Laptop",
+    "price": 54990.0,
+    "product_id": "P19",
+    "rating": 4.5,
+    "review_count": 689,
+    "specs": {
+      "ram_gb": 16,
+      "storage_gb": 512,
+      "weight_g": 1290
+    },
+    "stock": 22
+  },
+  {
+    "availability": true,
+    "brand": "VoltBook",
+    "category": "laptop",
+    "description": "Creator laptop with dedicated graphics, 32GB RAM and color-accurate display.",
+    "name": "VoltBook Pro 16 Laptop",
+    "price": 89990.0,
+    "product_id": "P20",
+    "rating": 4.7,
+    "review_count": 412,
+    "specs": {
+      "ram_gb": 32,
+      "storage_gb": 1024,
+      "weight_g": 2100
+    },
+    "stock": 9
+  },
+  {
+    "availability": true,
+    "brand": "CompuPro",
+    "category": "laptop",
+    "description": "Everyday 15-inch laptop with backlit keyboard and fast charging.",
+    "name": "CompuPro Everyday 15 Laptop",
+    "price": 42990.0,
+    "product_id": "P21",
+    "rating": 4.2,
+    "review_count": 1530,
+    "specs": {
+      "ram_gb": 8,
+      "storage_gb": 512,
+      "weight_g": 1750
+    },
+    "stock": 47
+  },
+  {
+    "availability": true,
+    "brand": "CompuPro",
+    "category": "laptop",
+    "description": "Affordable 14-inch laptop for students with all-day battery.",
+    "name": "CompuPro Budget 14 Laptop",
+    "price": 29990.0,
+    "product_id": "P22",
+    "rating": 3.9,
+    "review_count": 2210,
+    "specs": {
+      "ram_gb": 8,
+      "storage_gb": 256,
+      "weight_g": 1490
+    },
+    "stock": 83
+  },
+  {
+    "availability": true,
+    "brand": "NovaMobile",
+    "category": "smartphone",
+    "description": "5G smartphone with 120Hz AMOLED display and 50MP camera.",
+    "name": "NovaMobile X5 Smartphone",
+    "price": 32999.0,
+    "product_id": "P23",
+    "rating": 4.4,
+    "review_count": 1980,
+    "specs": {
+      "battery_mah": 5000,
+      "storage_gb": 128
+    },
+    "stock": 56
+  },
+  {
+    "availability": true,
+    "brand": "NovaMobile",
+    "category": "smartphone",
+    "description": "Flagship smartphone with periscope zoom camera and titanium frame.",
+    "name": "NovaMobile Ultra Smartphone",
+    "price": 59999.0,
+    "product_id": "P24",
+    "rating": 4.6,
+    "review_count": 870,
+    "specs": {
+      "battery_mah": 5400,
+      "storage_gb": 256
+    },
+    "stock": 23
+  },
+  {
+    "availability": true,
+    "brand": "OrbitPhone",
+    "category": "smartphone",
+    "description": "Budget 5G smartphone with big battery and clean software.",
+    "name": "OrbitPhone Lite Smartphone",
+    "price": 15999.0,
+    "product_id": "P25",
+    "rating": 4.1,
+    "review_count": 3120,
+    "specs": {
+      "battery_mah": 6000,
+      "storage_gb": 128
+    },
+    "stock": 110
+  },
+  {
+    "availability": true,
+    "brand": "OrbitPhone",
+    "category": "smartphone",
+    "description": "Compact smartphone with one-hand friendly size and wireless charging.",
+    "name": "OrbitPhone Mini Smartphone",
+    "price": 24999.0,
+    "product_id": "P26",
+    "rating": 4.3,
+    "review_count": 640,
+    "specs": {
+      "battery_mah": 4200,
+      "storage_gb": 128
+    },
+    "stock": 38
+  },
+  {
+    "availability": true,
+    "brand": "SlatePro",
+    "category": "tablet",
+    "description": "11-inch tablet with stylus support and 12-hour battery for notes and art.",
+    "name": "SlatePro 11 Tablet",
+    "price": 38990.0,
+    "product_id": "P27",
+    "rating": 4.5,
+    "review_count": 520,
+    "specs": {
+      "storage_gb": 128,
+      "weight_g": 480
+    },
+    "stock": 31
+  },
+  {
+    "availability": true,
+    "brand": "TabNest",
+    "category": "tablet",
+    "description": "Kid-proof tablet with parental controls and bumper case.",
+    "name": "TabNest Kids Tablet",
+    "price": 12999.0,
+    "product_id": "P28",
+    "rating": 4.2,
+    "review_count": 1430,
+    "specs": {
+      "storage_gb": 64,
+      "weight_g": 550
+    },
+    "stock": 74
+  },
+  {
+    "availability": true,
+    "brand": "SlatePro",
+    "category": "tablet",
+    "description": "Large 13-inch tablet with desktop-class chip for video editing.",
+    "name": "SlatePro Max 13 Tablet",
+    "price": 64990.0,
+    "product_id": "P29",
+    "rating": 4.6,
+    "review_count": 210,
+    "specs": {
+      "storage_gb": 256,
+      "weight_g": 680
+    },
+    "stock": 14
+  },
+  {
+    "availability": true,
+    "brand": "KeyForge",
+    "category": "mechanical keyboard",
+    "description": "Hot-swappable mechanical keyboard with tactile switches and PBT keycaps.",
+    "name": "KeyForge TKL Mechanical Keyboard",
+    "price": 7999.0,
+    "product_id": "P30",
+    "rating": 4.6,
+    "review_count": 930,
+    "specs": {
+      "keys": 87
+    },
+    "stock": 52
+  },
+  {
+    "availability": true,
+    "brand": "ClickClack",
+    "category": "mechanical keyboard",
+    "description": "Compact 60 percent mechanical keyboard with linear switches and RGB.",
+    "name": "ClickClack 60 Mechanical Keyboard",
+    "price": 5999.0,
+    "product_id": "P31",
+    "rating": 4.4,
+    "review_count": 1260,
+    "specs": {
+      "keys": 61
+    },
+    "stock": 68
+  },
+  {
+    "availability": false,
+    "brand": "KeyForge",
+    "category": "mechanical keyboard",
+    "description": "Wireless mechanical keyboard with 2.4GHz and triple Bluetooth pairing.",
+    "name": "KeyForge Wireless Mechanical Keyboard",
+    "price": 9999.0,
+    "product_id": "P32",
+    "rating": 4.5,
+    "review_count": 410,
+    "specs": {
+      "battery_hours": 200,
+      "keys": 98
+    },
+    "stock": 0
+  },
+  {
+    "availability": true,
+    "brand": "GlidePro",
+    "category": "wireless mouse",
+    "description": "Silent-click wireless mouse with ergonomic shape for office work.",
+    "name": "GlidePro Silent Wireless Mouse",
+    "price": 1999.0,
+    "product_id": "P33",
+    "rating": 4.3,
+    "review_count": 2870,
+    "specs": {
+      "dpi": 3200
+    },
+    "stock": 140
+  },
+  {
+    "availability": true,
+    "brand": "SwiftClick",
+    "category": "wireless mouse",
+    "description": "Esports-grade wireless mouse with 26000 DPI sensor and 90-hour battery.",
+    "name": "SwiftClick Gaming Wireless Mouse",
+    "price": 4999.0,
+    "product_id": "P34",
+    "rating": 4.6,
+    "review_count": 1150,
+    "specs": {
+      "battery_hours": 90,
+      "dpi": 26000
+    },
+    "stock": 47
+  },
+  {
+    "availability": true,
+    "brand": "GlidePro",
+    "category": "wireless mouse",
+    "description": "Slim wireless mouse that slips into a laptop sleeve.",
+    "name": "GlidePro Travel Wireless Mouse",
+    "price": 1499.0,
+    "product_id": "P35",
+    "rating": 4.1,
+    "review_count": 1980,
+    "specs": {
+      "dpi": 1600
+    },
+    "stock": 190
+  },
+  {
+    "availability": true,
+    "brand": "ViewMax",
+    "category": "monitor",
+    "description": "27-inch 4K monitor with HDR and height-adjustable stand.",
+    "name": "ViewMax 27 4K Monitor",
+    "price": 32999.0,
+    "product_id": "P36",
+    "rating": 4.5,
+    "review_count": 480,
+    "specs": {
+      "size_in": 27
+    },
+    "stock": 26
+  },
+  {
+    "availability": true,
+    "brand": "ClearPanel",
+    "category": "monitor",
+    "description": "Eye-care 24-inch monitor with low blue light for long workdays.",
+    "name": "ClearPanel 24 Office Monitor",
+    "price": 13999.0,
+    "product_id": "P37",
+    "rating": 4.3,
+    "review_count": 1120,
+    "specs": {
+      "size_in": 24
+    },
+    "stock": 58
+  },
+  {
+    "availability": true,
+    "brand": "ViewMax",
+    "category": "monitor",
+    "description": "Curved 34-inch ultrawide monitor with 144Hz refresh for gaming.",
+    "name": "ViewMax 34 Ultrawide Monitor",
+    "price": 54999.0,
+    "product_id": "P38",
+    "rating": 4.7,
+    "review_count": 230,
+    "specs": {
+      "size_in": 34
+    },
+    "stock": 11
+  },
+  {
+    "availability": true,
+    "brand": "LensCraft",
+    "category": "mirrorless camera",
+    "description": "24MP mirrorless camera with 4K video and in-body stabilization.",
+    "name": "LensCraft M50 Mirrorless Camera",
+    "price": 64990.0,
+    "product_id": "P39",
+    "rating": 4.6,
+    "review_count": 340,
+    "specs": {
+      "megapixels": 24
+    },
+    "stock": 16
+  },
+  {
+    "availability": true,
+    "brand": "FotoPro",
+    "category": "instant camera",
+    "description": "Point-and-shoot instant camera with auto exposure for parties.",
+    "name": "FotoPro Instant Camera",
+    "price": 8999.0,
+    "product_id": "P40",
+    "rating": 4.2,
+    "review_count": 1740,
+    "specs": {
+      "megapixels": 12
+    },
+    "stock": 92
+  },
+  {
+    "availability": true,
+    "brand": "LensCraft",
+    "category": "mirrorless camera",
+    "description": "Full-frame mirrorless camera with dual card slots for professionals.",
+    "name": "LensCraft Pro Mirrorless Camera",
+    "price": 129990.0,
+    "product_id": "P41",
+    "rating": 4.8,
+    "review_count": 120,
+    "specs": {
+      "megapixels": 33
+    },
+    "stock": 6
+  },
+  {
+    "availability": true,
+    "brand": "TrailPack",
+    "category": "backpack",
+    "description": "45-litre hiking backpack with rain cover and ventilated back.",
+    "name": "TrailPack 45 Hiking Backpack",
+    "price": 4999.0,
+    "product_id": "P42",
+    "rating": 4.5,
+    "review_count": 860,
+    "specs": {
+      "capacity_l": 45
+    },
+    "stock": 73
+  },
+  {
+    "availability": false,
+    "brand": "UrbanHaul",
+    "category": "backpack",
+    "description": "Water-repellent laptop backpack with USB passthrough and 15-inch sleeve.",
+    "name": "UrbanHaul Laptop Backpack",
+    "price": 2999.0,
+    "product_id": "P43",
+    "rating": 4.4,
+    "review_count": 2130,
+    "specs": {
+      "capacity_l": 25
+    },
+    "stock": 0
+  },
+  {
+    "availability": true,
+    "brand": "TrailPack",
+    "category": "backpack",
+    "description": "Light 20-litre daypack backpack for commutes and short trails.",
+    "name": "TrailPack Daypack 20 Backpack",
+    "price": 1999.0,
+    "product_id": "P44",
+    "rating": 4.3,
+    "review_count": 1470,
+    "specs": {
+      "capacity_l": 20
+    },
+    "stock": 120
+  },
+  {
+    "availability": true,
+    "brand": "StrideX",
+    "category": "running shoes",
+    "description": "Carbon-plated running shoes with responsive foam for race day.",
+    "name": "StrideX Marathon Running Shoes",
+    "price": 8999.0,
+    "product_id": "P45",
+    "rating": 4.6,
+    "review_count": 790,
+    "specs": {
+      "weight_g": 220
+    },
+    "stock": 44
+  },
+  {
+    "availability": true,
+    "brand": "RunFlex",
+    "category": "running shoes",
+    "description": "Cushioned daily running shoes with breathable knit upper.",
+    "name": "RunFlex Daily Running Shoes",
+    "price": 5999.0,
+    "product_id": "P46",
+    "rating": 4.4,
+    "review_count": 1680,
+    "specs": {
+      "weight_g": 280
+    },
+    "stock": 87
+  },
+  {
+    "availability": true,
+    "brand": "StrideX",
+    "category": "running shoes",
+    "description": "Grippy trail running shoes with rock plate for uneven paths.",
+    "name": "StrideX Trail Running Shoes",
+    "price": 7499.0,
+    "product_id": "P47",
+    "rating": 4.5,
+    "review_count": 530,
+    "specs": {
+      "weight_g": 310
+    },
+    "stock": 39
+  },
+  {
+    "availability": true,
+    "brand": "BrewMate",
+    "category": "coffee maker",
+    "description": "12-cup drip coffee maker with programmable timer and thermal carafe.",
+    "name": "BrewMate Drip Coffee Maker",
+    "price": 4999.0,
+    "product_id": "P48",
+    "rating": 4.3,
+    "review_count": 920,
+    "specs": {
+      "capacity_cups": 12
+    },
+    "stock": 51
+  },
+  {
+    "availability": true,
+    "brand": "CafePress",
+    "category": "coffee maker",
+    "description": "Espresso coffee maker with steam wand for lattes at home.",
+    "name": "CafePress Espresso Coffee Maker",
+    "price": 18999.0,
+    "product_id": "P49",
+    "rating": 4.6,
+    "review_count": 380,
+    "specs": {
+      "pressure_bar": 15
+    },
+    "stock": 19
+  },
+  {
+    "availability": true,
+    "brand": "BrewMate",
+    "category": "coffee maker",
+    "description": "Classic French press coffee maker with stainless filter.",
+    "name": "BrewMate French Press Coffee Maker",
+    "price": 1499.0,
+    "product_id": "P50",
+    "rating": 4.4,
+    "review_count": 2310,
+    "specs": {
+      "capacity_cups": 8
+    },
+    "stock": 160
+  }
+]

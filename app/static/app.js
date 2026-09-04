@@ -181,12 +181,83 @@ async function withSessionRecovery(fn) {
   }
 }
 
-/* ---------- chat rendering ---------- */
-function mdLite(text) {
-  return esc(text)
+/* ---------- chat rendering (markdown-lite, escape-first) ---------- */
+function mdInline(text) {
+  // text is already escaped; cosmetic inline spans only
+  return text
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-    .replace(/`([^`]+)`/g, "<code>$1</code>")
-    .replace(/\n/g, "<br>");
+    .replace(/`([^`]+)`/g, "<code>$1</code>");
+}
+
+function mdLite(text) {
+  const lines = esc(text).split("\n");
+  let html = "";
+  let para = [];
+  const flushPara = () => {
+    if (para.length) html += `<p>${para.join("<br>")}</p>`;
+    para = [];
+  };
+  const isTableRow = (l) => l.trim().startsWith("|") && l.includes("|", 1);
+  const isSepRow = (l) => /^\|?[\s:\-|]+\|?$/.test(l.trim()) && l.includes("-");
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    const heading = trimmed.match(/^(#{1,4})\s+(.*)$/);
+    if (heading) {
+      flushPara();
+      const tag = heading[1].length === 1 ? "h3" : heading[1].length === 2 ? "h4" : "h5";
+      html += `<${tag}>${mdInline(heading[2])}</${tag}>`;
+      i += 1;
+      continue;
+    }
+    if (/^---+$/.test(trimmed)) {
+      flushPara();
+      html += "<hr>";
+      i += 1;
+      continue;
+    }
+    if (isTableRow(line)) {
+      flushPara();
+      const rows = [];
+      while (i < lines.length && isTableRow(lines[i])) {
+        if (!isSepRow(lines[i])) {
+          rows.push(lines[i].trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim()));
+        }
+        i += 1;
+      }
+      if (rows.length) {
+        const head = rows[0].map((c) => `<th>${mdInline(c)}</th>`).join("");
+        const body = rows.slice(1).map((r) => `<tr>${r.map((c) => `<td>${mdInline(c)}</td>`).join("")}</tr>`).join("");
+        html += `<table class="md-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+      }
+      continue;
+    }
+    const bullet = line.match(/^\s*[-*]\s+(.*)$/);
+    const numbered = line.match(/^\s*\d+[.)]\s+(.*)$/);
+    if (bullet || numbered) {
+      flushPara();
+      const ordered = !!numbered;
+      const items = [];
+      while (i < lines.length) {
+        const m = ordered ? lines[i].match(/^\s*\d+[.)]\s+(.*)$/) : lines[i].match(/^\s*[-*]\s+(.*)$/);
+        if (!m) break;
+        items.push(`<li>${mdInline(m[1])}</li>`);
+        i += 1;
+      }
+      html += ordered ? `<ol class="md-list">${items.join("")}</ol>` : `<ul class="md-list">${items.join("")}</ul>`;
+      continue;
+    }
+    if (trimmed === "") {
+      flushPara();
+      i += 1;
+      continue;
+    }
+    para.push(mdInline(line));
+    i += 1;
+  }
+  flushPara();
+  return html;
 }
 
 function addUserMsg(text) {

@@ -114,18 +114,18 @@ All variants honor the frozen `search(query, top_k, filters)` interface, so call
 | Response grounding | deterministic faithfulness report over scripted scenarios | `python evaluation/response_eval.py` |
 | LLM judge | key-gated LLM-as-judge faithfulness/helpfulness; exits 0 with SKIPPED without keys | `python evaluation/llm_judge_eval.py` |
 
-Experiment results with real embeddings (`all-MiniLM-L6-v2`, weights cached locally) on the fixed 3-query dataset, k=5 (refresh with `python evaluation/experiment_eval.py --k 5 --rerank`):
+Experiment results with real embeddings (`all-MiniLM-L6-v2`, weights cached locally) on the fixed 3-query dataset over the 50-product catalog, k=5 (refresh with `python evaluation/experiment_eval.py --k 5 --rerank`):
 
 ```
 | variant (avg over queries) | recall | precision | MRR | constraint@1 | latency_ms |
 |---|---|---|---|---|---|
-| bm25          | 1.00 | 0.20 | 1.00 | 1.00 | 0.1 |
-| semantic      | 1.00 | 0.20 | 1.00 | 1.00 | 27.5 |
-| hybrid        | 1.00 | 0.20 | 1.00 | 1.00 | 10.7 |
-| hybrid+rerank | 1.00 | 0.20 | 1.00 | 1.00 | 41.0 |
+| bm25          | 1.00 | 0.20 | 0.83 | 1.00 | 0.1 |
+| semantic      | 1.00 | 0.20 | 0.39 | 1.00 | 22.3 |
+| hybrid        | 1.00 | 0.20 | 0.67 | 1.00 | 10.6 |
+| hybrid+rerank | 1.00 | 0.20 | 0.83 | 1.00 | 1407.4 |
 ```
 
-On this fixed dataset the variants tie on quality metrics, so **BM25 remains the default** (no hybrid-superiority claim without evidence). The variants still differ in surface ordering — see `demo/recording.md`, where semantic and hybrid rank both headphones (P01, P02) before the smartwatch that BM25 leaks into second place for the demo query.
+On this fixed dataset every variant still retrieves the right products (recall 1.00), but ranking quality now separates (BM25 ≥ hybrid+rerank > hybrid > semantic on MRR), so **BM25 remains the default** (no hybrid-superiority claim without evidence). The variants still differ in surface ordering — see `demo/recording.md`, where semantic and hybrid surface the P10 travel headphones first for the demo query while BM25 keeps P01 on top.
 
 ## API surface
 

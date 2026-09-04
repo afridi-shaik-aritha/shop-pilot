@@ -46,7 +46,7 @@ def test_tool_names_and_schemas():
 def test_search_get_compare_flow():
     tools = _tools()
     hits = tools["search_products"].run(
-        {"query": "wireless headphones", "top_k": 2}, {}
+        {"query": "wireless headphones long battery life", "top_k": 2}, {}
     )
     assert hits["products"][0]["product_id"] == "P01"
     detail = tools["get_product"].run({"product_id": "P01"}, {})
