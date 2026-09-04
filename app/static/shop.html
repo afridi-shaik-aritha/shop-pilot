@@ -26,7 +26,20 @@
       </div>
       <div class="topbar-right">
         <a class="btn btn-ghost btn-sm" href="/">← Assistant</a>
-        <a id="trolleyLink" class="btn btn-primary btn-sm" href="/">Trolley&nbsp;<span id="shopCount" class="count" hidden></span></a>
+        <details id="miniCart" class="mini-cart">
+          <summary class="btn btn-primary btn-sm mini-summary" aria-label="Open your trolley">Trolley <span id="shopCount" class="count" hidden></span></summary>
+          <div class="mini-panel">
+            <div class="mini-body">
+              <p id="miniEmpty" class="mini-empty">Empty — add from the shelves or ask the assistant.</p>
+              <div id="miniLines" class="mini-lines" hidden></div>
+              <div id="miniTotal" class="mini-total" hidden></div>
+            </div>
+            <div id="miniActions" class="mini-actions" hidden>
+              <button id="miniClear" class="btn btn-danger btn-sm btn-block" type="button">Clear trolley</button>
+              <a class="btn btn-ghost btn-sm btn-block" href="/">Review in assistant →</a>
+            </div>
+          </div>
+        </details>
       </div>
     </header>
 

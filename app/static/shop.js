@@ -3,7 +3,7 @@
 "use strict";
 
 import {
-  $, $$, esc, get, post, cardHtml, openProductModal, ensureSessionId,
+  $, $$, esc, inr, get, post, del, cardHtml, openProductModal, ensureSessionId,
   storedSessionId, clearStoredSession,
 } from "./common.js";
 
@@ -24,6 +24,12 @@ const els = {
   count: $("#shopCount"),
   modalRoot: $("#modalRoot"),
   toast: $("#toast"),
+  miniCart: $("#miniCart"),
+  miniEmpty: $("#miniEmpty"),
+  miniLines: $("#miniLines"),
+  miniTotal: $("#miniTotal"),
+  miniActions: $("#miniActions"),
+  miniClear: $("#miniClear"),
 };
 
 function toast(msg, kind = "") {
@@ -116,7 +122,68 @@ async function refreshCount() {
     const n = (cart.items || []).reduce((t, i) => t + i.quantity, 0);
     els.count.hidden = n === 0;
     els.count.textContent = n;
+    renderMini(cart);
   } catch { /* count stays as-is when offline */ }
+}
+
+function renderMini(cart) {
+  const items = (cart && cart.items) || [];
+  const totals = (cart && cart.totals) || null;
+  els.miniEmpty.hidden = items.length > 0;
+  els.miniLines.hidden = items.length === 0;
+  els.miniTotal.hidden = items.length === 0;
+  els.miniActions.hidden = items.length === 0;
+  els.miniLines.innerHTML = items.map((i) =>
+    `<div class="mini-line"><span>${esc(i.name || i.product_id)} ×${i.quantity}</span><span>${inr((i.unit_price || 0) * i.quantity)}</span></div>`
+  ).join("");
+  els.miniTotal.innerHTML =
+    `<div class="mini-line mini-grand"><strong>Total</strong><strong>${inr(totals?.total)}</strong></div>`;
+}
+
+/* Mini-cart Clear: two taps (button turns into 'Really clear?') so a stray
+   click can't empty a shared trolley, then a live DELETE /cart. */
+let miniArmed = false;
+let miniArmTimer = null;
+function resetMiniArm() {
+  miniArmed = false;
+  if (miniArmTimer) { clearTimeout(miniArmTimer); miniArmTimer = null; }
+  if (els.miniClear) {
+    els.miniClear.textContent = "Clear trolley";
+    els.miniClear.classList.remove("btn-ink");
+    els.miniClear.setAttribute("aria-label", "Empty the whole trolley");
+  }
+}
+async function clearMiniCart() {
+  try {
+    await ensureSession();
+    await apiWithRecovery(() =>
+      del(`/cart?session_id=${encodeURIComponent(state.sessionId)}`));
+    renderMini({ items: [], totals: { subtotal: 0, shipping: 0, tax: 0, total: 0 } });
+    await refreshCount();
+    toast("Trolley emptied — start fresh or ask for something new.");
+  } catch (err) { toast("Could not clear trolley: " + err.message, "err"); }
+}
+function onMiniClearClick() {
+  if (!miniArmed) {
+    miniArmed = true;
+    els.miniClear.textContent = "Really clear?";
+    els.miniClear.classList.add("btn-ink");
+    els.miniClear.setAttribute("aria-label", "Confirm emptying the whole trolley");
+    miniArmTimer = setTimeout(resetMiniArm, 4000);
+    return;
+  }
+  resetMiniArm();
+  clearMiniCart();
+}
+
+async function loadMiniWhenOpen() {
+  if (!els.miniCart || !els.miniCart.open) return;
+  try {
+    await ensureSession();
+    const cart = await apiWithRecovery(() =>
+      get(`/cart?session_id=${encodeURIComponent(state.sessionId)}`));
+    renderMini(cart);
+  } catch { renderMini({ items: [], totals: null }); }
 }
 
 async function addToCart(productId, quantity = 1, productName = null) {
@@ -174,6 +241,10 @@ async function boot() {
     state.sort = els.sort.value;
     loadGrid();
   });
+  if (els.miniCart) {
+    els.miniCart.addEventListener("toggle", loadMiniWhenOpen);
+    els.miniClear?.addEventListener("click", onMiniClearClick);
+  }
   await loadCategories();
   await loadGrid();
   await refreshCount();

@@ -70,7 +70,10 @@
         <section id="cartPanel" class="panel">
           <div class="panel-head">
             <h3><b>Your</b> trolley</h3>
-            <span id="cartCount" class="count" hidden></span>
+            <div class="panel-head-right">
+              <button id="clearCartBtn" class="btn btn-ghost btn-sm" type="button" hidden aria-label="Empty the whole trolley">Clear</button>
+              <span id="cartCount" class="count" hidden></span>
+            </div>
           </div>
           <div id="cartBody" class="panel-body empty">Empty for now. Ask the assistant to add the good stuff, or pick from a search.</div>
         </section>

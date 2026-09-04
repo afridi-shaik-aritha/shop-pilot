@@ -2,9 +2,11 @@
 
 Drives the actual HTTP surface (`/chat` through `create_app`) with a scripted
 scenario: one policy turn, one catalog turn, one cart turn, one checkout-prep
-turn. It asserts role routing, read-only reach for catalog, that the cart role
-never sees order tools, and that no reply ever echoes a confirmation code.
-It never confirms or places an order.
+turn, and a final cart change after the slip was prepared. It asserts role
+routing, read-only reach for catalog, that the cart role never sees order
+tools, that no reply ever echoes a confirmation code, and that mutating the
+cart after prepare_checkout voids the awaiting slip server-side (a stale
+confirm is then rejected). It never confirms or places an order.
 
 Because the app runs in-process (TestClient), each run gets a throwaway SQLite
 file and no ports or servers are needed.
@@ -38,7 +40,12 @@ SCENARIO = [
     ("catalog", "Compare the SonicWave X5 and the BassBoom Pro wireless headphones.", "read-only reach"),
     ("cart", "I need the SonicWave X5 (P01) wireless headphones — add them to my cart.", "cart mutation"),
     ("cart", "The cart is settled. Prepare the checkout so I can review and confirm.", "checkout prep"),
+    ("cart", "Actually, add a ThunderBox Bluetooth Speaker (P04) to the cart as well — one unit.", "cart mutation after prepare"),
 ]
+
+# Tools that change the cart — the fifth turn must use at least one so the
+# awaiting slip genuinely has nothing to stand on.
+_MUTATORS = ("add_to_cart", "remove_from_cart", "update_cart_quantity", "clear_cart")
 
 HEX16 = re.compile(r"\b[0-9a-f]{16}\b")
 
@@ -108,6 +115,22 @@ def run_model(model: str, provider: str | None, base_url: str | None,
                     print(f"  [{note}] role={data.get('role')} tools={tools}")
                     print(f"    -> {reply[:220]}")
                 notes.append(f"{note}: ok")
+            # Final state integrity: the cart change after prepare_checkout
+            # must have voided the awaiting slip server-side.
+            if expected_role == "cart" and note == "cart mutation after prepare":
+                if not any(t in _MUTATORS for t in tools):
+                    return False, notes + ["cart mutation after prepare: model did not mutate the cart"]
+                slip = client.get("/checkout", params={"session_id": sid})
+                if slip.status_code != 400:
+                    return False, notes + [
+                        f"slip-void: /checkout returned {slip.status_code} after a cart change"
+                        f" (expected 400 — the awaiting slip must not survive a changed trolley)"]
+                stale = client.post("/checkout/confirm", json={
+                    "session_id": sid, "confirmation_token": "stale-token"})
+                if stale.status_code != 400:
+                    return False, notes + [
+                        f"stale-confirm: /checkout/confirm returned {stale.status_code} with no slip"]
+                notes.append("slip voided by cart change: ok")
         except Exception as exc:  # network/provider/client errors surface here
             return False, notes + [f"exception: {type(exc).__name__}: {exc}"]
         return True, notes

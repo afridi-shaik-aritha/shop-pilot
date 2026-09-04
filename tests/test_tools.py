@@ -34,6 +34,7 @@ def test_tool_names_and_schemas():
         "remove_from_cart",
         "update_cart_quantity",
         "get_cart",
+        "clear_cart",
         "prepare_checkout",
         "confirm_checkout",
         "place_order",
@@ -53,6 +54,20 @@ def test_search_get_compare_flow():
     assert detail["price"] == 8499.0
     table = tools["compare_products"].run({"product_ids": ["P01", "P02"]}, {})
     assert table["rows"]["price"] == {"P01": 8499.0, "P02": 12999.0}
+
+
+def test_search_products_schema_documents_natural_language_filters():
+    """The model must be able to tell that budget/battery/review asks are
+    searchable — a bare opaque 'filters' object once led a live model to
+    refuse instead of searching."""
+    tools = _tools()
+    t = tools["search_products"]
+    props = t.schema["properties"]["filters"]["properties"]
+    assert set(props) >= {"max_price", "category", "in_stock"}
+    desc = t.description
+    assert "max_price" in desc and "in_stock" in desc and "under 10000" in desc
+    # price/budget queries are satisfied by the free-text query itself
+    assert "free-text" in desc or "free text" in desc
 
 
 def test_cart_checkout_confirm_order_flow():
@@ -75,6 +90,39 @@ def test_cart_checkout_confirm_order_flow():
     order = tools["place_order"].run({"idempotency_key": "t-key"}, ctx)
     assert order["status"] == "COMPLETED"
     assert order["order_id"].startswith("O-")
+
+
+def test_clear_cart_empties_every_line():
+    tools = _tools()
+    ctx: dict = {}
+    tools["add_to_cart"].run({"product_id": "P01", "quantity": 2}, ctx)
+    tools["add_to_cart"].run({"product_id": "P03", "quantity": 1}, ctx)
+    assert len(tools["get_cart"].run({}, ctx)["items"]) == 2
+    cleared = tools["clear_cart"].run({}, ctx)
+    assert cleared["cart"]["items"] == []
+    assert cleared["totals"]["total"] == 0.0
+
+
+def test_cart_change_voids_awaiting_slip():
+    """A slip belongs to the exact trolley it was cut for: mutating the cart
+    drops it, so an old code can never confirm lines the shopper no longer sees."""
+    tools = _tools()
+    ctx: dict = {}
+    tools["add_to_cart"].run({"product_id": "P01", "quantity": 1}, ctx)
+    prep = tools["prepare_checkout"].run({}, ctx)
+    assert ctx["checkout"] is not None
+    # adding another product changes the trolley -> slip voided
+    tools["add_to_cart"].run({"product_id": "P02", "quantity": 1}, ctx)
+    assert ctx["checkout"] is None
+    prep2 = tools["prepare_checkout"].run({}, ctx)
+    # resizing a line also voids the standing slip
+    tools["update_cart_quantity"].run({"product_id": "P02", "quantity": 3}, ctx)
+    assert ctx["checkout"] is None
+    prep3 = tools["prepare_checkout"].run({}, ctx)
+    assert prep3["checkout_id"] not in (prep["checkout_id"], prep2["checkout_id"])
+    # clearing the trolley drops the fresh slip too
+    tools["clear_cart"].run({}, ctx)
+    assert ctx["checkout"] is None
 
 
 def test_repeated_prepare_keeps_standing_slip():

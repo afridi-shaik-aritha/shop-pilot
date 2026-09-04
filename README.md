@@ -33,12 +33,12 @@ python -m uvicorn app.api.routes:create_app --factory --reload
 The UI loads your `.env` automatically (provider keys optional). The whole flow happens in three moves:
 
 1. **Chat** — type a wish list (“wireless headphones under ₹10,000 with good battery life”) or tap a suggestion chip. The assistant searches the catalog, answers only with grounded prices and review quotes, shows the tools it ran, and drops matches straight into the trolley panel. Products it settled on also appear as cards under the reply (derived from retrieved ids only, never prose) with working Details and Add-to-cart buttons.
-2. **Trolley** — each line shows price × quantity with − / + steppers and a remove action, with Subtotal, Shipping, GST (18%) and Total underneath. “Prepare checkout” freezes a snapshot of exactly what you'd be ordering.
+2. **Trolley** — each line shows price × quantity with − / + steppers and a remove action, with Subtotal, Shipping, GST (18%) and Total underneath. A one-tap **Clear** action empties the whole trolley at once (and voids any slip still waiting on it, exactly like the `clear_cart` tool). “Prepare checkout” freezes a snapshot of exactly what you'd be ordering.
 3. **Confirm** — the order slip shows the frozen lines plus a random per-checkout confirmation token. Only **“✓ I confirm this order”** places the order — the token is valid only for that exact trolley, so changing the cart invalidates it; “Cancel checkout” voids the slip. A successful order appears as a stamped, green **COMPLETED** slip, decrements stock, and the server stays idempotent for the same order key (replays never double-charge or double-decrement).
 
 “New session” resets the chat, cart and slip. Everything shown in the panels is deterministic — prices come from the catalog, never from the model.
 
-- **Shop page:** the topbar **Shop →** button opens `/shop`, a standalone storefront over the same catalog and the same trolley — category shelves, live search, price/rating sort, product cards with Details and Add-to-cart. Checkout itself stays in the assistant, where the confirmation slip lives.
+- **Shop page:** the topbar **Shop →** button opens `/shop`, a standalone storefront over the same catalog and the same trolley — category shelves, live search, price/rating sort, product cards with Details and Add-to-cart. The topbar **Trolley** dropdown shows the shared cart's lines and total, with its own two-step Clear. Checkout itself stays in the assistant, where the confirmation slip lives.
 
 - **Demo data mode:** the UI falls back to an offline deterministic mock (`app/static/mock.js`) whenever the API is unreachable (e.g. opening the static file directly) or when you append `?mock=1` — every flow stays walkable without a server or LLM.
 - **Standalone preview build:** `python demo/build_ui_preview.py` regenerates `app/static/ui-preview.html`, a self-contained single-file copy of the assistant UI (screenshots above were captured from it).

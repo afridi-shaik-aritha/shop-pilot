@@ -162,6 +162,25 @@ def test_pasting_confirmation_code_in_chat_is_short_circuited(tmp_path):
     assert conf["status"] == "CONFIRMED"
 
 
+def test_delete_cart_clears_all_and_voids_awaiting_slip(tmp_path):
+    c = TestClient(_app(tmp_path))
+    sid = c.post("/cart/items", json={"product_id": "P01", "quantity": 2}).json()["session_id"]
+    c.post("/cart/items", json={"session_id": sid, "product_id": "P03", "quantity": 1})
+    prep = c.post("/checkout/prepare", json={"session_id": sid}).json()
+    assert prep["status"] == "AWAITING_CONFIRMATION"
+    cleared = c.delete("/cart", params={"session_id": sid}).json()
+    assert cleared["items"] == [] and cleared["totals"]["total"] == 0.0
+    # the awaiting slip was dropped with the cart that no longer matches
+    assert c.get("/checkout", params={"session_id": sid}).status_code == 400
+    assert c.post("/checkout/confirm", json={"session_id": sid,
+                                              "confirmation_token": prep["confirmation_token"]}).status_code == 400
+    # and the trolley stays usable afterwards
+    c.post("/cart/items", json={"session_id": sid, "product_id": "P05", "quantity": 1})
+    prep2 = c.post("/checkout/prepare", json={"session_id": sid}).json()
+    assert prep2["status"] == "AWAITING_CONFIRMATION"
+    assert prep2["checkout_id"] != prep["checkout_id"]
+
+
 def test_update_and_remove(tmp_path):
     c = TestClient(_app(tmp_path))
     sid = c.post("/cart/items", json={"product_id": "P03", "quantity": 1}).json()["session_id"]

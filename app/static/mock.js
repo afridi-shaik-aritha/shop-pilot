@@ -976,6 +976,19 @@
         return http(200, { session_id: session.id, ...cartPayload() });
       }
 
+      // A pending slip belongs to the exact trolley it was cut for: any cart
+      // change voids it (mirrors the real API), so the UI can never show a
+      // token for a trolley that no longer matches.
+      const dropStaleSlip = () => {
+        if (checkout && checkout.status === "AWAITING_CONFIRMATION") checkout = null;
+      };
+
+      if (path === "/cart" && method === "DELETE") {
+        session.items = [];
+        dropStaleSlip();
+        return http(200, { session_id: session.id, ...cartPayload() });
+      }
+
       const mItem = path.match(/^\/cart\/items\/([\w\-.]+)$/);
       if (mItem) {
         const pid = decodeURIComponent(mItem[1]);
@@ -984,10 +997,12 @@
           if (!row) return bad("not in cart: " + pid);
           if (body.quantity <= 0) session.items = session.items.filter((i) => i.product_id !== pid);
           else row.quantity = body.quantity;
+          dropStaleSlip();
           return http(200, { session_id: session.id, ...cartPayload() });
         }
         if (method === "DELETE") {
           session.items = session.items.filter((i) => i.product_id !== pid);
+          dropStaleSlip();
           return http(200, { session_id: session.id, ...cartPayload() });
         }
       }
@@ -998,6 +1013,7 @@
         const row = session.items.find((i) => i.product_id === body.product_id);
         if (row) row.quantity += qty;
         else session.items.push({ product_id: body.product_id, quantity: qty });
+        dropStaleSlip();
         return http(200, { session_id: session.id, ...cartPayload() });
       }
 

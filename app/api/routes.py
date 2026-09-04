@@ -497,6 +497,17 @@ def create_app(settings: Settings | None = None, llm=None) -> FastAPI:
             raise HTTPException(400, str(exc)) from None
         return _name_items({**persist(session, ctx), **out})
 
+    @app.delete("/cart")
+    def clear_cart(session_id: str | None = None):
+        """Empty the whole trolley at once (mirrors the clear_cart tool)."""
+        session = session_of(session_id)
+        ctx = ctx_of(session)
+        try:
+            out = tools["clear_cart"].run({}, ctx)
+        except DomainError as exc:
+            raise HTTPException(400, str(exc)) from None
+        return _name_items({**persist(session, ctx), **out})
+
     @app.post("/checkout/prepare")
     def prepare(body: SessionIn):
         session = session_of(body.session_id)

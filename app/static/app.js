@@ -28,6 +28,7 @@ const els = {
   badge: $("#llmBadge"),
   cartBody: $("#cartBody"),
   cartCount: $("#cartCount"),
+  clearCartBtn: $("#clearCartBtn"),
   checkoutBody: $("#checkoutBody"),
   modalRoot: $("#modalRoot"),
   toast: $("#toast"),
@@ -431,6 +432,10 @@ function renderCart() {
   const awaiting = state.checkout && state.checkout.status === "AWAITING_CONFIRMATION" && !state.order;
   els.cartCount.hidden = items.length === 0;
   els.cartCount.textContent = items.reduce((n, i) => n + i.quantity, 0);
+  if (els.clearCartBtn) {
+    els.clearCartBtn.hidden = items.length === 0;
+    if (!items.length) resetClearArm(); // also clear the armed 'Really clear?' label
+  }
   if (!items.length) {
     els.cartBody.className = "panel-body empty";
     els.cartBody.textContent = "Empty for now. Ask the assistant to add the good stuff, or pick from a search.";
@@ -507,6 +512,51 @@ async function addToCart(productId, quantity = 1, productName = null) {
 }
 
 /* ---------- checkout ---------- */
+/* Two-step guard: the first click arms the button ('Really clear?'), the
+   second within 4s empties; anything else (timeout, empty re-render, or a
+   New session) resets it. */
+let clearArmed = false;
+let clearArmTimer = null;
+function resetClearArm() {
+  clearArmed = false;
+  if (clearArmTimer) { clearTimeout(clearArmTimer); clearArmTimer = null; }
+  const b = els.clearCartBtn;
+  if (b) {
+    b.textContent = "Clear";
+    b.classList.remove("btn-danger");
+    b.setAttribute("aria-label", "Empty the whole trolley");
+  }
+}
+function onClearClick() {
+  if (!els.clearCartBtn || els.clearCartBtn.hidden) return;
+  if (!clearArmed) {
+    clearArmed = true;
+    els.clearCartBtn.textContent = "Really clear?";
+    els.clearCartBtn.classList.add("btn-danger");
+    els.clearCartBtn.setAttribute("aria-label", "Confirm emptying the whole trolley");
+    clearArmTimer = setTimeout(resetClearArm, 4000);
+    return;
+  }
+  resetClearArm();
+  clearTrolley();
+}
+
+async function clearTrolley() {
+  try {
+    await ensureSession();
+    await withSessionRecovery(() =>
+      del(`/cart?session_id=${encodeURIComponent(state.sessionId)}`));
+    // Server-side clear_cart also drops any awaiting slip (its snapshot no
+    // longer matches), so both panels return to their empty states.
+    state.cart = { items: [], totals: { subtotal: 0, shipping: 0, tax: 0, total: 0 } };
+    state.checkout = null;
+    renderCart();
+    renderCheckout();
+    await refreshCheckoutView();
+    toast("Trolley emptied — start fresh or ask for something new.");
+  } catch (err) { toast("Could not clear trolley: " + err.message, "err"); }
+}
+
 async function prepareCheckout() {
   try {
     await ensureSession();
@@ -722,6 +772,7 @@ async function boot() {
   }
   bindChips();
   wireShopButton();
+  if (els.clearCartBtn) els.clearCartBtn.addEventListener("click", onClearClick);
   await refreshCart();
   els.form.addEventListener("submit", (e) => { e.preventDefault(); sendMessage(); });
   els.input.addEventListener("keydown", (e) => {

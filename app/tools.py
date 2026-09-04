@@ -49,6 +49,19 @@ def _cart_matches_snapshot(cart: Cart, snapshot: Cart) -> bool:
     return sorted(map(key, cart.items)) == sorted(map(key, snapshot.items))
 
 
+def _drop_stale_slip(ctx: dict) -> None:
+    """A pending slip belongs to the exact trolley it was cut for. If the cart
+    just changed underneath it, the slip no longer applies — drop it so a
+    shopper can never confirm an order for lines they no longer see."""
+    co = ctx.get("checkout")
+    if (
+        co is not None
+        and co.status == ConfirmationStatus.AWAITING_CONFIRMATION
+        and not _cart_matches_snapshot(_cart_of(ctx), co.cart_snapshot)
+    ):
+        ctx["checkout"] = None
+
+
 def build_tools(
     index: ProductIndex,
     catalog: ProductService,
@@ -116,21 +129,30 @@ def build_tools(
     def add_to_cart(args: dict, ctx: dict) -> dict:
         cart = _cart_of(ctx)
         carts.add_to_cart(cart, args["product_id"], args.get("quantity", 1))
+        _drop_stale_slip(ctx)
         return {"cart": cart.model_dump(), "totals": carts.totals(cart)}
 
     def remove_from_cart(args: dict, ctx: dict) -> dict:
         cart = _cart_of(ctx)
         carts.remove_from_cart(cart, args["product_id"])
+        _drop_stale_slip(ctx)
         return {"cart": cart.model_dump(), "totals": carts.totals(cart)}
 
     def update_cart_quantity(args: dict, ctx: dict) -> dict:
         cart = _cart_of(ctx)
         carts.update_quantity(cart, args["product_id"], args["quantity"])
+        _drop_stale_slip(ctx)
         return {"cart": cart.model_dump(), "totals": carts.totals(cart)}
 
     def get_cart(args: dict, ctx: dict) -> dict:
         cart = _cart_of(ctx)
         return {**cart.model_dump(), "totals": carts.totals(cart)}
+
+    def clear_cart(args: dict, ctx: dict) -> dict:
+        cart = _cart_of(ctx)
+        carts.clear_cart(cart)
+        _drop_stale_slip(ctx)
+        return {"cart": cart.model_dump(), "totals": carts.totals(cart)}
 
     def prepare_checkout(args: dict, ctx: dict) -> dict:
         cart = _cart_of(ctx)
@@ -180,13 +202,35 @@ def build_tools(
     return {
         "search_products": Tool(
             "search_products",
-            "Keyword search over the product catalog.",
+            "Full-text product search. Put the shopper's whole ask in the "
+            "free-text query, including budget, battery life, features or "
+            "reviews (e.g. 'wireless headphones under 10000 with long battery "
+            "and good reviews'). Optional filters object: max_price (float, "
+            "inclusive ceiling in rupees), category (exact shelf name, e.g. "
+            "'wireless headphones'), in_stock (true keeps in-stock only).",
             _s(
                 "search_products",
                 {
                     "query": {"type": "string"},
                     "top_k": {"type": "integer"},
-                    "filters": {"type": "object"},
+                    "filters": {
+                        "type": "object",
+                        "description": "Optional narrowing filters",
+                        "properties": {
+                            "max_price": {
+                                "type": "number",
+                                "description": "Inclusive price ceiling in rupees",
+                            },
+                            "category": {
+                                "type": "string",
+                                "description": "Exact catalog category name",
+                            },
+                            "in_stock": {
+                                "type": "boolean",
+                                "description": "True keeps availability + stock > 0 only",
+                            },
+                        },
+                    },
                 },
                 ["query"],
             ),
@@ -264,6 +308,15 @@ def build_tools(
         ),
         "get_cart": Tool(
             "get_cart", "Current cart plus totals.", _s("get_cart", {}, []), get_cart
+        ),
+        "clear_cart": Tool(
+            "clear_cart",
+            "Empty the whole trolley — removes every line at once. Use when "
+            "the shopper says clear/empty the cart, remove everything, or "
+            "start over. (To change a single line instead, use "
+            "update_cart_quantity with 0 or remove_from_cart.)",
+            _s("clear_cart", {}, []),
+            clear_cart,
         ),
         "prepare_checkout": Tool(
             "prepare_checkout",

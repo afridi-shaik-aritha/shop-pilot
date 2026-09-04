@@ -17,7 +17,7 @@ CATALOG_TOOLS = frozenset(
 )
 CART_TOOLS = CATALOG_TOOLS | frozenset(
     {"add_to_cart", "remove_from_cart", "update_cart_quantity", "get_cart",
-     "prepare_checkout"}
+     "clear_cart", "prepare_checkout"}
 )
 POLICY_TOOLS = frozenset({"search_policy"})
 
