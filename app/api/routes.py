@@ -1,10 +1,11 @@
 """FastAPI routes. Thin over services; sessions persist per request in SQLite."""
+import json
 import re
 import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -200,11 +201,17 @@ def create_app(settings: Settings | None = None, llm=None) -> FastAPI:
 
     @app.get("/")
     def index():
-        return FileResponse(str(STATIC_DIR / "index.html"))
+        return FileResponse(
+            str(STATIC_DIR / "index.html"),
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache"},
+        )
 
     @app.get("/shop")
     def shop():
-        return FileResponse(str(STATIC_DIR / "shop.html"))
+        return FileResponse(
+            str(STATIC_DIR / "shop.html"),
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache"},
+        )
 
     @app.get("/health")
     def health():
@@ -546,6 +553,276 @@ def create_app(settings: Settings | None = None, llm=None) -> FastAPI:
             except ProductNotFound:
                 continue
         return cards
+
+    @app.post("/chat/stream")
+    def chat_stream(body: ChatIn):
+        if llm is None:
+            raise HTTPException(
+                503,
+                "LLM not configured; set LLM_PROVIDER/LLM_BASE_URL/LLM_API_KEY/LLM_MODEL",
+            )
+        session = session_of(body.session_id)
+        ctx = ctx_of(session)
+        standing = ctx.get("checkout")
+
+        def sse(event: dict) -> str:
+            return f"data: {json.dumps(event)}\n\n"
+
+        def stream_generator():
+            if (
+                standing is not None
+                and standing.status == ConfirmationStatus.AWAITING_CONFIRMATION
+                and standing.confirmation_token
+                and standing.confirmation_token in body.message
+            ):
+                reply = (
+                    "I can't confirm that from chat — confirmation happens only "
+                    "when you press \u201cI confirm this order\u201d on the order slip. "
+                    "Your code is already on the slip, nothing has been charged, "
+                    "and no order exists yet. Press the button on the slip (or "
+                    "Cancel checkout to void it)."
+                )
+                stored = _code_safe(body.message, session)
+                session.messages.append({"role": "user", "content": stored[:4000]})
+                session.messages.append({"role": "assistant", "content": reply})
+                del session.messages[:-32]
+                persist(session, ctx)
+                traces.record("chat", {"session_id": session.session_id,
+                                       "status": "ok", "role": "cart",
+                                       "tool_calls": 0,
+                                       "note": "code-paste short-circuit"})
+                yield sse({"type": "delta", "text": reply})
+                yield sse({"type": "done", "session_id": session.session_id, "reply": reply,
+                           "status": "ok", "steps": 0, "tool_calls": 0,
+                           "role": "cart", "tools": [], "products": []})
+                return
+
+            awaiting = (
+                standing is not None
+                and standing.status == ConfirmationStatus.AWAITING_CONFIRMATION
+            )
+            cancel_hit = _CANCEL_INTENT.search(body.message)
+            if cancel_hit and not _QUESTION_PREFIX.match(body.message) and "?" not in body.message:
+                if awaiting:
+                    try:
+                        checkout.cancel(ctx["checkout"])
+                    except DomainError:
+                        pass
+                    reply = (
+                        "Checkout cancelled — nothing was charged and no order "
+                        "was placed. Your trolley is untouched, so you can prepare "
+                        "checkout again whenever you're ready."
+                    )
+                else:
+                    reply = (
+                        "There's no checkout to cancel — nothing has been prepared "
+                        "or charged, and chat can't cancel placed orders. Your "
+                        "trolley is untouched."
+                    )
+                stored = _code_safe(body.message, session)
+                session.messages.append({"role": "user", "content": stored[:4000]})
+                session.messages.append({"role": "assistant", "content": reply})
+                del session.messages[:-32]
+                persist(session, ctx)
+                traces.record("chat", {"session_id": session.session_id,
+                                       "status": "ok", "role": "cart",
+                                       "tool_calls": 0,
+                                       "note": "cancel-intent short-circuit"})
+                yield sse({"type": "delta", "text": reply})
+                yield sse({"type": "done", "session_id": session.session_id, "reply": reply,
+                           "status": "ok", "steps": 0, "tool_calls": 0,
+                           "role": "cart", "tools": [], "products": []})
+                return
+
+            if cancel_hit and awaiting:
+                reply = (
+                    "Your checkout is still awaiting your OK — press \u201cCancel "
+                    "checkout\u201d on the order slip to void it, or just tell me "
+                    "\u201ccancel the checkout\u201d. Either way your trolley stays "
+                    "intact."
+                )
+                stored = _code_safe(body.message, session)
+                session.messages.append({"role": "user", "content": stored[:4000]})
+                session.messages.append({"role": "assistant", "content": reply})
+                del session.messages[:-32]
+                persist(session, ctx)
+                traces.record("chat", {"session_id": session.session_id,
+                                       "status": "ok", "role": "cart",
+                                       "tool_calls": 0,
+                                       "note": "cancel-question short-circuit"})
+                yield sse({"type": "delta", "text": reply})
+                yield sse({"type": "done", "session_id": session.session_id, "reply": reply,
+                           "status": "ok", "steps": 0, "tool_calls": 0,
+                           "role": "cart", "tools": [], "products": []})
+                return
+
+            if (
+                standing is not None
+                and standing.status == ConfirmationStatus.AWAITING_CONFIRMATION
+                and _AWAITING_INTENT.search(body.message)
+                and not cancel_hit
+            ):
+                reply = (
+                    "I can't confirm an order from chat — confirmation happens only "
+                    "when you press \u201cI confirm this order\u201d on the order slip. "
+                    "Nothing has been charged and no order exists yet; the slip is "
+                    "still awaiting your OK. Press the button on the slip (or "
+                    "Cancel checkout to void it)."
+                )
+                stored = _code_safe(body.message, session)
+                session.messages.append({"role": "user", "content": stored[:4000]})
+                session.messages.append({"role": "assistant", "content": reply})
+                del session.messages[:-32]
+                persist(session, ctx)
+                traces.record("chat", {"session_id": session.session_id,
+                                       "status": "ok", "role": "cart",
+                                       "tool_calls": 0,
+                                       "note": "confirm-intent short-circuit"})
+                yield sse({"type": "delta", "text": reply})
+                yield sse({"type": "done", "session_id": session.session_id, "reply": reply,
+                           "status": "ok", "steps": 0, "tool_calls": 0,
+                           "role": "cart", "tools": [], "products": []})
+                return
+
+            if _PLACE_INTENT.search(body.message):
+                reply = (
+                    "Nothing is on the order slip yet — no checkout has been "
+                    "prepared, nothing has been charged, and no order exists. "
+                    "Fill the trolley and press \u201cPrepare checkout\u201d to review "
+                    "what you'd be ordering; confirmation always happens on the "
+                    "slip, never in chat."
+                )
+                stored = _code_safe(body.message, session)
+                session.messages.append({"role": "user", "content": stored[:4000]})
+                session.messages.append({"role": "assistant", "content": reply})
+                del session.messages[:-32]
+                persist(session, ctx)
+                traces.record("chat", {"session_id": session.session_id,
+                                       "status": "ok", "role": "cart",
+                                       "tool_calls": 0,
+                                       "note": "place-intent short-circuit"})
+                yield sse({"type": "delta", "text": reply})
+                yield sse({"type": "done", "session_id": session.session_id, "reply": reply,
+                           "status": "ok", "steps": 0, "tool_calls": 0,
+                           "role": "cart", "tools": [], "products": []})
+                return
+
+            message = _code_safe(body.message, session)
+            role = classify(message)
+            yield sse({"type": "status", "role": role.name, "text": f"Thinking as {role.name}..."})
+            agent = ShoppingAgent(
+                llm=llm,
+                tools=subset_tools(tools, role),
+                system_prompt=role.prompt,
+                max_steps=role.max_steps,
+                max_tool_calls=role.max_tool_calls,
+            )
+
+            result = None
+            try:
+                for event in agent.run_stream(message, ctx, history=session.messages):
+                    if event["type"] == "complete":
+                        result = event["result"]
+                    else:
+                        yield sse(event)
+            except Exception as exc:
+                yield sse({"type": "error", "detail": f"LLM error: {exc}"})
+                return
+
+            if result is None:
+                yield sse({"type": "error", "detail": "LLM error"})
+                return
+
+            if result.status == "failed" and result.text.startswith("LLM error:"):
+                traces.record("chat", {"session_id": session.session_id,
+                                       "status": "failed",
+                                       "role": role.name,
+                                       "tool_calls": result.tool_calls_made,
+                                       "error": result.text[:200]})
+                yield sse({"type": "error", "detail": "LLM error"})
+                return
+
+            if (
+                result.status == "ok"
+                and result.tool_calls_made == 0
+                and role.name in ("catalog", "cart")
+                and _PRODUCT_ASK.search(message)
+            ):
+                yield sse({"type": "status", "role": role.name, "text": "Searching catalog..."})
+                yield sse({"type": "reset_delta"})
+                nudge = (
+                    f"{message}\n\n[Rule: this is a product request — you must "
+                    "call search_products (or another tool) and answer only from "
+                    "its results. Never invent products, ids, specs, or prices "
+                    "from memory. Search now.]"
+                )
+                retry = None
+                try:
+                    for event in agent.run_stream(nudge, ctx, history=session.messages):
+                        if event["type"] == "complete":
+                            retry = event["result"]
+                        else:
+                            yield sse(event)
+                except Exception as exc:
+                    yield sse({"type": "error", "detail": f"LLM error: {exc}"})
+                    return
+
+                if retry and retry.status == "ok" and retry.tool_calls_made > 0:
+                    result = retry
+                elif retry and retry.status == "ok" and not retry.text.startswith("LLM error:"):
+                    result = AgentResult(
+                        text=_NO_GROUNDED_FALLBACK,
+                        status="ok",
+                        steps=result.steps + retry.steps + 1,
+                        tool_calls_made=result.tool_calls_made,
+                        trace=[],
+                    )
+                    yield sse({"type": "reset_delta"})
+                    yield sse({"type": "delta", "text": _NO_GROUNDED_FALLBACK})
+                else:
+                    yield sse({"type": "error", "detail": "LLM error"})
+                    return
+
+            text = _PICKS_TAG.sub("\n", result.text or "")
+            text = re.sub(r"\n{3,}", "\n\n", text).strip()
+            session.messages.append({"role": "user", "content": message[:4000]})
+            picks = _trace_products(result.trace, text)
+            if text:
+                session.messages.append({"role": "assistant", "content": text[:4000]})
+                if picks:
+                    listed = "; ".join(f"{p['product_id']} = {p['name']}" for p in picks)
+                    session.messages.append({"role": "user", "content": (
+                        "[The previous assistant reply showed the shopper these "
+                        "products — reuse these exact ids when they refer back "
+                        f"('these', 'this one', 'the three'): {listed}]"
+                    )[:4000]})
+            del session.messages[:-32]
+            persist(session, ctx)
+            traces.record("chat", {"session_id": session.session_id,
+                                   "status": result.status,
+                                   "role": role.name,
+                                   "tool_calls": result.tool_calls_made})
+            yield sse({
+                "type": "done",
+                "session_id": session.session_id,
+                "reply": text,
+                "status": result.status,
+                "steps": result.steps,
+                "tool_calls": result.tool_calls_made,
+                "role": role.name,
+                "tools": [t["tool"] for t in result.trace] if result.trace else [],
+                "products": picks,
+            })
+
+        return StreamingResponse(
+            stream_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     @app.post("/search")
     def search(body: dict):

@@ -38,7 +38,7 @@ export const uid = () =>
   (crypto.randomUUID ? crypto.randomUUID() : "id-" + Date.now() + Math.random().toString(16).slice(2));
 
 /* ---------- API client (timeout + {status} errors) ---------- */
-export async function api(method, path, body, { timeoutMs = 25000 } = {}) {
+export async function api(method, path, body, { timeoutMs = 180000 } = {}) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
@@ -68,10 +68,85 @@ export async function api(method, path, body, { timeoutMs = 25000 } = {}) {
     clearTimeout(t);
   }
 }
-export const get = (p) => api("GET", p);
-export const post = (p, b) => api("POST", p, b);
-export const patch = (p, b) => api("PATCH", p, b);
-export const del = (p) => api("DELETE", p);
+export const get = (p, opts) => api("GET", p, undefined, opts);
+export const post = (p, b, opts) => api("POST", p, b, opts);
+export const patch = (p, b, opts) => api("PATCH", p, b, opts);
+export const del = (p, opts) => api("DELETE", p, undefined, opts);
+
+export async function streamPost(path, body, onEvent, { timeoutMs = 180000 } = {}) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const opts = {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+      },
+      body: JSON.stringify(body),
+      signal: ctrl.signal,
+    };
+    const res = await fetch(path, opts);
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        const errJson = await res.json();
+        if (errJson && typeof errJson.detail === "string") detail = errJson.detail;
+      } catch {}
+      const err = new Error(detail);
+      err.status = res.status;
+      throw err;
+    }
+
+    if (res.body && typeof res.body.getReader === "function") {
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buffer = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop(); // keep partial trailing line
+        for (let line of lines) {
+          line = line.trim();
+          if (!line || !line.startsWith("data:")) continue;
+          const jsonStr = line.slice(5).trim();
+          if (!jsonStr) continue;
+          try {
+            const event = JSON.parse(jsonStr);
+            if (onEvent) onEvent(event);
+          } catch (e) {
+            console.error("SSE parse error", e, line);
+          }
+        }
+      }
+      if (buffer.trim().startsWith("data:")) {
+        try {
+          const event = JSON.parse(buffer.trim().slice(5).trim());
+          if (onEvent) onEvent(event);
+        } catch {}
+      }
+    } else {
+      // Non-streaming / mock fetch fallback
+      const data = await res.json();
+      if (onEvent) {
+        if (data.reply) onEvent({ type: "delta", text: data.reply });
+        onEvent({ type: "done", ...data });
+      }
+    }
+  } catch (err) {
+    if (err.name === "AbortError") {
+      const e = new Error("request timed out — the server took too long");
+      e.status = 0;
+      throw e;
+    }
+    throw err;
+  } finally {
+    clearTimeout(t);
+  }
+}
 
 /* Ensure a server session id, minting via POST /sessions (mock-compatible). */
 export async function ensureSessionId() {

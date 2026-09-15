@@ -2,9 +2,9 @@
 "use strict";
 
 import {
-  $, $$, LS_KEY, esc, inr, uid, get, post, patch, del,
+  $, $$, LS_KEY, esc, inr, uid, get, post, patch, del, streamPost,
   cardHtml, openProductModal,
-} from "./common.js";
+} from "./common.js?v=stream2";
 
 const CHAT_KEY = "shopPilot.chat";
 const LS_ORDER_KEY = "shopPilot.lastOrder";
@@ -318,17 +318,94 @@ async function sendMessage(text) {
   hideGreeting();
   addUserMsg(q);
   const placeholder = addAssistantPlaceholder();
+
+  let accumulated = "";
+  let toolsUsed = new Set();
+  let doneData = null;
+  let hasReceivedDeltas = false;
+
+  const toolLabels = {
+    search_products: "Searching catalog…",
+    get_product: "Inspecting product specs…",
+    search_reviews: "Reading customer reviews…",
+    compare_products: "Comparing products…",
+    add_to_cart: "Adding to trolley…",
+    remove_from_cart: "Updating trolley…",
+    update_cart_quantity: "Updating quantity…",
+    get_cart: "Checking trolley…",
+    clear_cart: "Emptying trolley…",
+    prepare_checkout: "Preparing checkout slip…",
+    search_policy: "Checking store policy…",
+  };
+
+  const updateStreamBubble = () => {
+    stopThinking(placeholder);
+    const body = $(".bubble", placeholder);
+    if (!body) return;
+    const chipsHtml = toolsUsed.size
+      ? `<div class="tool-chips">` + [...toolsUsed].map((t) => `<span class="tool-chip">${esc(t)}</span>`).join("") + `</div>`
+      : "";
+    body.innerHTML =
+      `<div class="who">assistant</div>` +
+      `<div class="plain">${mdLite(accumulated)}<span class="streaming-cursor"></span></div>` +
+      chipsHtml;
+    scrollBottom();
+  };
+
   try {
     await ensureSession();
-    const data = await withSessionRecovery(() =>
-      post("/chat", { session_id: state.sessionId, message: q }));
-    if (data.status === "failed") {
-      fillAssistant(placeholder, data.reply, data.tools || []);
+    await withSessionRecovery(async () => {
+      accumulated = "";
+      toolsUsed.clear();
+      doneData = null;
+      hasReceivedDeltas = false;
+
+      await streamPost(
+        "/chat/stream",
+        { session_id: state.sessionId, message: q },
+        (event) => {
+          if (!event || !event.type) return;
+
+          if (event.type === "status") {
+            const thinkEl = $(".think-line", placeholder);
+            if (thinkEl && !hasReceivedDeltas) {
+              thinkEl.textContent = event.text || "Thinking…";
+            }
+          } else if (event.type === "tool_start") {
+            toolsUsed.add(event.name);
+            const thinkEl = $(".think-line", placeholder);
+            if (thinkEl && !hasReceivedDeltas) {
+              thinkEl.textContent = toolLabels[event.name] || `Running ${event.name}…`;
+            }
+          } else if (event.type === "tool_end") {
+            toolsUsed.add(event.name);
+          } else if (event.type === "reset_delta") {
+            accumulated = "";
+          } else if (event.type === "delta") {
+            hasReceivedDeltas = true;
+            accumulated += event.text;
+            updateStreamBubble();
+          } else if (event.type === "done") {
+            doneData = event;
+          } else if (event.type === "error") {
+            throw new Error(event.detail || "Stream error");
+          }
+        },
+        { timeoutMs: 180000 }
+      );
+    });
+
+    if (doneData && doneData.status === "failed") {
+      fillAssistant(placeholder, doneData.reply || accumulated, doneData.tools || [...toolsUsed]);
       toast("The model run ended without success.", "err");
-      els.input.value = q; autoGrow(); // keep the message for a retry
+      els.input.value = q; autoGrow();
     } else {
-      fillAssistant(placeholder, data.reply, data.tools || []);
-      addAssistantCards(data.products);
+      const finalReply = (doneData && doneData.reply) ? doneData.reply : (accumulated || "_no reply_");
+      const finalTools = (doneData && doneData.tools && doneData.tools.length) ? doneData.tools : [...toolsUsed];
+      fillAssistant(placeholder, finalReply, finalTools);
+      if (doneData && doneData.products) {
+        addAssistantCards(doneData.products);
+      }
     }
     await refreshCart();
   } catch (err) {

@@ -1090,7 +1090,7 @@
         });
       }
 
-      if (path === "/chat" && method === "POST") {
+      if ((path === "/chat" || path === "/chat/stream") && method === "POST") {
         const out = await chatReply(body.message);
         return http(200, { session_id: session.id, reply: out.reply, status: "ok", steps: 3, tool_calls: out.tools.length, tools: out.tools, products: out.products || [] });
       }

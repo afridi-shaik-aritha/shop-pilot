@@ -16,6 +16,7 @@ The whole system is mapped as an interactive, self-contained diagram (dark/light
 
 - **Interactive map:** `docs/architecture/shop-pilot-architecture.html` — open in any browser, no build or network needed. Search nodes, focus a component, probe the request path.
 - **Editable source:** `docs/architecture/shop-pilot.architecture.json` (typed JSON IR; regenerate the HTML with the archify CLI).
+- **Trace walkthrough maps** (play §16 of `docs/BEHIND_THE_SCENES.md` in order): `shop-pilot-query.workflow.html` (query → grounded reply) · `shop-pilot-chat.sequence.html` (ReAct loop) · `shop-pilot-checkout.lifecycle.html` (slip states) · `shop-pilot-payment.sequence.html` (till) — JSON sources alongside each HTML.
 - **The one picture to remember:** every chat message passes deterministic gates before any LLM runs; the model picks tools within a role's allowlist; and confirm/place/void exist only behind the human slip — no LLM path ever touches final state.
 
 ---
@@ -57,7 +58,7 @@ The UI loads your `.env` automatically (provider keys optional). The whole flow 
 ## Quickstart (tests, CLI, eval)
 
 ```bash
-# Full test suite (190 tests: services, agents, roles, guardrails, intent gates, anti-fabrication, stores, API, retrieval, web, e2e journeys)
+# Full test suite (193 tests: services, agents, roles, guardrails, intent gates, anti-fabrication, stores, API, retrieval, streaming, web, e2e journeys)
 python -m pytest -q
 
 # Recorded end-to-end demo (writes demo/recording.md)
@@ -88,7 +89,7 @@ The `/chat` endpoint returns **503 until an LLM is configured**. Without keys, t
 | `LLM_BASE_URL` | e.g. `https://integrate.api.nvidia.com/v1` (NIM hosted) or `http://localhost:8000/v1` (self-hosted NIM) or `https://openrouter.ai/api/v1` |
 | `LLM_API_KEY` | provider key, env-only, redacted from traces |
 | `LLM_MODEL` | e.g. `openai/gpt-oss-20b` (NIM hosted) or `meta/llama-3.1-70b-instruct` (self-hosted NIM) or `anthropic/claude-3.5-sonnet` (OpenRouter) |
-| `LLM_TIMEOUT_S` | request timeout (default 60; reasoning models such as `nvidia/nemotron-3-ultra-550b-a55b` need more) |
+| `LLM_TIMEOUT_S` | request timeout (default 120; reasoning models such as `nvidia/nemotron-3-ultra-550b-a55b` or slow local models need more) |
 
 Example (current default — NVIDIA NIM hosted, verified live):
 
@@ -169,6 +170,7 @@ On this fixed dataset every variant still retrieves the right products (recall 1
 ```
 POST   /sessions             mint a session id
 POST   /chat                 agent chat (503 without LLM config; returns grounded `products` cards)
+POST   /chat/stream          streaming SSE variant of /chat — yields status/tool/reasoning/delta events then a final products card list; preferred by the web UI
 POST   /search               retrieval (any configured variant)
 GET    /products             list the catalog
 POST   /products             create a product
@@ -209,7 +211,7 @@ app/
   agent.py     shared bounded ReAct engine (role-parameterized)
   state/       models, file store, SQLite store (sessions/keys/orders/traces/catalog)
   api/         FastAPI routes + web UI mount
-  static/      index.html · app.js (chat) · shop.html · shop.js (storefront) · common.js (shared) · styles.css · mock.js (offline demo mode)
+  static/      index.html · app.js (chat — streaming SSE via /chat/stream) · shop.html · shop.js (storefront) · common.js (shared, streamPost helper) · styles.css · mock.js (offline demo mode)
 data/          products.json · reviews.json · policies.json (catalog seeds)
 evaluation/    dataset · metrics · retrieval/experiment/safety/response/llm-judge runners
 demo/          interactive CLI · live routed smoke (live_chat.py) · recorded demo (demo/recording.md)

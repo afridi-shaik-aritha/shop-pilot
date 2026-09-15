@@ -41,6 +41,15 @@ class FakeLLM:
             raise RuntimeError("FakeLLM script exhausted")
         return self._script.pop(0)
 
+    def complete_stream(self, messages: list[dict], tools: dict):
+        msg = self.complete(messages, tools)
+        if msg.content:
+            words = msg.content.split(" ")
+            for i, word in enumerate(words):
+                chunk = word if i == len(words) - 1 else word + " "
+                yield ("delta", chunk)
+        yield ("done", msg)
+
 
 class LLMError(RuntimeError):
     pass
@@ -202,3 +211,117 @@ class OpenAICompatibleClient:
                 )
             )
         return LLMMessage(content=content, tool_calls=calls)
+
+    def complete_stream(self, messages: list[dict], tools: dict):
+        body = {
+            "model": self._model,
+            "messages": messages,
+            "tools": to_openai_tools(tools) if tools else [],
+            "tool_choice": "auto" if tools else "none",
+            "stream": True,
+        }
+        request = _urlreq.Request(
+            self._url,
+            data=_json.dumps(body).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self._api_key}",
+            },
+            method="POST",
+        )
+        response = None
+        for attempt in range(self._max_attempts):
+            try:
+                response = _urlreq.urlopen(request, timeout=self._timeout_s)
+                break
+            except _urlreq.HTTPError as exc:
+                detail = ""
+                try:
+                    raw = exc.read(1024).decode("utf-8", errors="replace")
+                    detail = f": {raw[:500]}" if raw.strip() else ""
+                except Exception:
+                    pass
+                transient = exc.code == 429 or exc.code in (500, 502, 503, 504) or (
+                    exc.code == 400
+                    and any(
+                        marker in detail.lower()
+                        for marker in ("backend", "upstream", "provider returned error")
+                    )
+                )
+                if transient and attempt < self._max_attempts - 1:
+                    _time.sleep(2.0 * (attempt + 1) + _random.uniform(0, 0.5))
+                    continue
+                raise LLMError(f"llm request failed: HTTP {exc.code}") from None
+            except Exception as exc:
+                if attempt < self._max_attempts - 1 and isinstance(
+                    exc, (TimeoutError, ConnectionError, OSError)
+                ):
+                    _time.sleep(2.0 * (attempt + 1) + _random.uniform(0, 0.5))
+                    continue
+                raise LLMError(f"llm request failed: {type(exc).__name__}") from None
+
+        if response is None:
+            raise LLMError("llm request failed: no response after retries")
+
+        accumulated_content = ""
+        tool_calls_map: dict[int, dict] = {}
+
+        try:
+            with response:
+                for raw_line in response:
+                    line = raw_line.decode("utf-8", errors="replace").strip()
+                    if not line or not line.startswith("data:"):
+                        continue
+                    payload_str = line[5:].strip()
+                    if payload_str == "[DONE]":
+                        break
+                    try:
+                        chunk = _json.loads(payload_str)
+                    except _json.JSONDecodeError:
+                        continue
+                    choices = chunk.get("choices") or []
+                    if not choices:
+                        continue
+                    delta = choices[0].get("delta") or {}
+                    content_chunk = delta.get("content")
+                    if content_chunk:
+                        accumulated_content += content_chunk
+                        yield ("delta", content_chunk)
+                    reasoning_chunk = delta.get("reasoning_content") or delta.get("reasoning")
+                    if reasoning_chunk:
+                        yield ("reasoning", reasoning_chunk)
+                    raw_tool_calls = delta.get("tool_calls")
+                    if isinstance(raw_tool_calls, list):
+                        for tc in raw_tool_calls:
+                            idx = tc.get("index", 0)
+                            if idx not in tool_calls_map:
+                                tool_calls_map[idx] = {"id": "", "name": "", "arguments": ""}
+                            if tc.get("id"):
+                                tool_calls_map[idx]["id"] += tc["id"]
+                            func = tc.get("function") or {}
+                            if func.get("name"):
+                                tool_calls_map[idx]["name"] += func["name"]
+                            if func.get("arguments"):
+                                tool_calls_map[idx]["arguments"] += func["arguments"]
+        except Exception as exc:
+            if not accumulated_content and not tool_calls_map:
+                raise LLMError(f"llm stream interrupted: {type(exc).__name__}: {exc}") from None
+
+        parsed_tool_calls: list[ToolCall] = []
+        for idx in sorted(tool_calls_map.keys()):
+            tc_data = tool_calls_map[idx]
+            raw_args = tc_data["arguments"] or "{}"
+            try:
+                args = _json.loads(raw_args)
+            except _json.JSONDecodeError:
+                args = {}
+            parsed_tool_calls.append(
+                ToolCall(
+                    name=tc_data["name"],
+                    arguments=args,
+                    id=tc_data["id"] or f"call_{idx}",
+                )
+            )
+
+        yield ("done", LLMMessage(content=accumulated_content, tool_calls=parsed_tool_calls))
+

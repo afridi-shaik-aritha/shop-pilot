@@ -187,3 +187,185 @@ class ShoppingAgent:
             tool_calls_made=tool_calls_made,
             trace=trace,
         )
+
+    def run_stream(
+        self,
+        user_message: str,
+        ctx: dict,
+        history: list[dict] | None = None,
+    ):
+        """Streamed ReAct loop. Yields lifecycle events:
+        - {"type": "status", "text": "..."}
+        - {"type": "delta", "text": chunk}
+        - {"type": "reasoning", "text": chunk}
+        - {"type": "tool_start", "name": tool_name, "arguments": {...}}
+        - {"type": "tool_end", "name": tool_name, "result": {...}}
+        - {"type": "complete", "result": AgentResult(...)}
+        """
+        messages: list[dict] = [
+            {"role": "system", "content": self.system_prompt},
+            *self._history_entries(history),
+            {"role": "user", "content": user_message},
+        ]
+        trace: list[dict] = []
+        tool_calls_made = 0
+        steps = 0
+        while steps < self.max_steps:
+            steps += 1
+            reply: LLMMessage | None = None
+            step_deltas: list[str] = []
+            try:
+                if hasattr(self.llm, "complete_stream"):
+                    for event_kind, payload in self.llm.complete_stream(messages, self.tools):
+                        if event_kind == "delta":
+                            step_deltas.append(payload)
+                            yield {"type": "delta", "text": payload}
+                        elif event_kind == "reasoning":
+                            yield {"type": "reasoning", "text": payload}
+                        elif event_kind == "done":
+                            reply = payload
+                else:
+                    reply = self.llm.complete(messages, self.tools)
+                    if reply.content:
+                        step_deltas.append(reply.content)
+                        yield {"type": "delta", "text": reply.content}
+            except Exception as exc:
+                res = AgentResult(
+                    text=f"LLM error: {type(exc).__name__}: {exc}",
+                    status="failed",
+                    steps=steps,
+                    tool_calls_made=tool_calls_made,
+                    trace=trace,
+                )
+                yield {"type": "complete", "result": res}
+                return
+
+            if reply is None:
+                res = AgentResult(
+                    text="LLM error: no reply received",
+                    status="failed",
+                    steps=steps,
+                    tool_calls_made=tool_calls_made,
+                    trace=trace,
+                )
+                yield {"type": "complete", "result": res}
+                return
+
+            if not reply.tool_calls:
+                messages.append({"role": "assistant", "content": reply.content})
+                res = AgentResult(
+                    text=reply.content,
+                    status="ok",
+                    steps=steps,
+                    tool_calls_made=tool_calls_made,
+                    trace=trace,
+                )
+                yield {"type": "complete", "result": res}
+                return
+
+            # If intermediate text was streamed before tool calls, notify client to reset text buffer
+            if step_deltas:
+                yield {"type": "reset_delta"}
+
+            call_ids = [c.id or f"call_{tool_calls_made + i}" for i, c in enumerate(reply.tool_calls)]
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": reply.content,
+                    "tool_calls": [
+                        {
+                            "id": call_ids[i],
+                            "type": "function",
+                            "function": {
+                                "name": c.name,
+                                "arguments": json.dumps(c.arguments),
+                            },
+                        }
+                        for i, c in enumerate(reply.tool_calls)
+                    ],
+                }
+            )
+            for i, call in enumerate(reply.tool_calls):
+                if tool_calls_made >= self.max_tool_calls:
+                    res = AgentResult(
+                        text="Stopped: tool-call budget exceeded.",
+                        status="failed",
+                        steps=steps,
+                        tool_calls_made=tool_calls_made,
+                        trace=trace,
+                    )
+                    yield {"type": "complete", "result": res}
+                    return
+                yield {"type": "tool_start", "name": call.name, "arguments": call.arguments}
+                tool = self.tools.get(call.name)
+                if tool is None:
+                    result = {"error": f"unknown tool: {call.name}"}
+                else:
+                    try:
+                        validate_tool_args(tool.schema, call.arguments)
+                        result = _model_visible(tool.run(call.arguments, ctx))
+                    except Exception as exc:
+                        result = {"error": f"{type(exc).__name__}: {exc}"}
+                tool_calls_made += 1
+                trace.append({"tool": call.name, "result": result})
+                yield {"type": "tool_end", "name": call.name, "result": result}
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": call_ids[i],
+                        "content": str(result),
+                    }
+                )
+
+        yield {"type": "status", "text": "Summarizing answer..."}
+        try:
+            final: LLMMessage | None = None
+            final_messages = messages + [
+                {
+                    "role": "system",
+                    "content": "Summarize your answer now from the tool results above. Do not call any more tools.",
+                }
+            ]
+            if hasattr(self.llm, "complete_stream"):
+                for event_kind, payload in self.llm.complete_stream(final_messages, self.tools):
+                    if event_kind == "delta":
+                        yield {"type": "delta", "text": payload}
+                    elif event_kind == "reasoning":
+                        yield {"type": "reasoning", "text": payload}
+                    elif event_kind == "done":
+                        final = payload
+            else:
+                final = self.llm.complete(final_messages, self.tools)
+                if final.content:
+                    yield {"type": "delta", "text": final.content}
+        except Exception as exc:
+            res = AgentResult(
+                text=f"LLM error: {type(exc).__name__}: {exc}",
+                status="failed",
+                steps=steps + 1,
+                tool_calls_made=tool_calls_made,
+                trace=trace,
+            )
+            yield {"type": "complete", "result": res}
+            return
+
+        if final is None or final.tool_calls:
+            res = AgentResult(
+                text="Stopped: step budget exceeded.",
+                status="failed",
+                steps=steps + 1,
+                tool_calls_made=tool_calls_made,
+                trace=trace,
+            )
+            yield {"type": "complete", "result": res}
+            return
+
+        res = AgentResult(
+            text=final.content,
+            status="ok",
+            steps=steps + 1,
+            tool_calls_made=tool_calls_made,
+            trace=trace,
+        )
+        yield {"type": "complete", "result": res}
+
