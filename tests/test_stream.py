@@ -43,6 +43,24 @@ def test_chat_stream_short_circuit(tmp_path):
     assert done_event["status"] == "ok"
 
 
+def test_chat_stream_zero_tool_policy_answer_is_retried(tmp_path):
+    """The streamed path holds policy turns to the same rule as /chat."""
+    script = [
+        LLMMessage(content="You can return items within 30 days.", tool_calls=[]),
+        LLMMessage(content="", tool_calls=[
+            ToolCall(name="search_policy", arguments={"query": "returns"})]),
+        LLMMessage(content="Unopened items can be returned within 15 days "
+                            "(POL-RETURN).", tool_calls=[]),
+    ]
+    c = TestClient(_app(tmp_path, script))
+    resp = c.post("/chat/stream", json={"message": "what is the return policy?"})
+    events = _parse_sse(resp.text)
+    done_event = [e for e in events if e["type"] == "done"][0]
+    assert done_event["tools"] == ["search_policy"]
+    assert "15 days" in done_event["reply"]
+    assert "30 days" not in done_event["reply"]
+
+
 def test_chat_stream_with_tools(tmp_path):
     script = [
         LLMMessage(

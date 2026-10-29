@@ -77,6 +77,42 @@ _NO_GROUNDED_FALLBACK = (
     "help you narrow it down."
 )
 
+# Policy turns get the same treatment, and always: every policy answer must
+# come from search_policy. A live model answered "30 days, unused, original
+# packaging" with zero tool calls while POL-RETURN says 15 days, unopened.
+_NO_POLICY_FALLBACK = (
+    "I couldn't find that in the store policy. I can answer questions about "
+    "shipping, returns, cancellation, payments, and order confirmation."
+)
+
+
+def _needs_grounding(result, role_name: str, message: str) -> bool:
+    """True when a reply that must come from tool results used none."""
+    if result.status != "ok" or result.tool_calls_made != 0:
+        return False
+    if role_name == "policy":
+        return True
+    return role_name in ("catalog", "cart") and bool(_PRODUCT_ASK.search(message))
+
+
+def _grounding_nudge(message: str, role_name: str) -> str:
+    if role_name == "policy":
+        return (
+            f"{message}\n\n[Rule: this is a store-policy question — you must "
+            "call search_policy and answer only from the rules it returns. "
+            "Never answer policy from memory. Search now.]"
+        )
+    return (
+        f"{message}\n\n[Rule: this is a product request — you must "
+        "call search_products (or another tool) and answer only from "
+        "its results. Never invent products, ids, specs, or prices "
+        "from memory. Search now.]"
+    )
+
+
+def _grounding_fallback(role_name: str) -> str:
+    return _NO_POLICY_FALLBACK if role_name == "policy" else _NO_GROUNDED_FALLBACK
+
 from app.agent import AgentResult, ShoppingAgent
 from app.cart.service import CartError, CartService
 from app.catalog.service import ProductNotFound, ProductService, ReviewService
@@ -433,18 +469,9 @@ def create_app(settings: Settings | None = None, llm=None) -> FastAPI:
         # belong to headphones/smartwatches). Retry once with an explicit
         # search-first instruction; if the model still won't search, answer
         # deterministically instead of replaying its ungrounded text.
-        if (
-            result.status == "ok"
-            and result.tool_calls_made == 0
-            and role.name in ("catalog", "cart")
-            and _PRODUCT_ASK.search(message)
-        ):
-            nudge = (
-                f"{message}\n\n[Rule: this is a product request — you must "
-                "call search_products (or another tool) and answer only from "
-                "its results. Never invent products, ids, specs, or prices "
-                "from memory. Search now.]"
-            )
+        # Policy turns are held to the same rule (see _needs_grounding).
+        if _needs_grounding(result, role.name, message):
+            nudge = _grounding_nudge(message, role.name)
             try:
                 retry = agent.run(nudge, ctx, history=session.messages)
             except LLMError as exc:
@@ -453,7 +480,7 @@ def create_app(settings: Settings | None = None, llm=None) -> FastAPI:
                 result = retry
             elif retry.status == "ok" and not retry.text.startswith("LLM error:"):
                 result = AgentResult(
-                    text=_NO_GROUNDED_FALLBACK,
+                    text=_grounding_fallback(role.name),
                     status="ok",
                     steps=result.steps + retry.steps + 1,
                     tool_calls_made=result.tool_calls_made,
@@ -742,20 +769,12 @@ def create_app(settings: Settings | None = None, llm=None) -> FastAPI:
                 yield sse({"type": "error", "detail": "LLM error"})
                 return
 
-            if (
-                result.status == "ok"
-                and result.tool_calls_made == 0
-                and role.name in ("catalog", "cart")
-                and _PRODUCT_ASK.search(message)
-            ):
-                yield sse({"type": "status", "role": role.name, "text": "Searching catalog..."})
+            if _needs_grounding(result, role.name, message):
+                status_text = ("Checking store policy..." if role.name == "policy"
+                               else "Searching catalog...")
+                yield sse({"type": "status", "role": role.name, "text": status_text})
                 yield sse({"type": "reset_delta"})
-                nudge = (
-                    f"{message}\n\n[Rule: this is a product request — you must "
-                    "call search_products (or another tool) and answer only from "
-                    "its results. Never invent products, ids, specs, or prices "
-                    "from memory. Search now.]"
-                )
+                nudge = _grounding_nudge(message, role.name)
                 retry = None
                 try:
                     for event in agent.run_stream(nudge, ctx, history=session.messages):
@@ -770,15 +789,16 @@ def create_app(settings: Settings | None = None, llm=None) -> FastAPI:
                 if retry and retry.status == "ok" and retry.tool_calls_made > 0:
                     result = retry
                 elif retry and retry.status == "ok" and not retry.text.startswith("LLM error:"):
+                    fallback = _grounding_fallback(role.name)
                     result = AgentResult(
-                        text=_NO_GROUNDED_FALLBACK,
+                        text=fallback,
                         status="ok",
                         steps=result.steps + retry.steps + 1,
                         tool_calls_made=result.tool_calls_made,
                         trace=[],
                     )
                     yield sse({"type": "reset_delta"})
-                    yield sse({"type": "delta", "text": _NO_GROUNDED_FALLBACK})
+                    yield sse({"type": "delta", "text": fallback})
                 else:
                     yield sse({"type": "error", "detail": "LLM error"})
                     return
@@ -834,7 +854,7 @@ def create_app(settings: Settings | None = None, llm=None) -> FastAPI:
             top_k = max(1, min(top_k, 50))
             return tools["search_products"].run(
                 {"query": body.get("query", ""), "top_k": top_k,
-                 "filters": raw_filters or {}}, {})
+                 "filters": raw_filters or {}}, {"top_k_cap": 50})
         except (ValueError, TypeError, KeyError) as exc:
             raise HTTPException(400, "invalid search arguments") from exc
         except (OSError, AttributeError) as exc:

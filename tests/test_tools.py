@@ -6,7 +6,7 @@ from app.checkout.service import CheckoutService, OrderService
 from app.retrieval.bm25 import ProductIndex
 from app.retrieval.corpus import load_products, load_reviews
 from app.state.models import Cart
-from app.tools import build_tools
+from app.tools import MODEL_MAX_TOP_K, build_tools
 
 
 def _tools():
@@ -99,6 +99,21 @@ def test_product_ref_schemas_advertise_product_name():
         props = tools[name].schema["properties"]
         assert "product_name" in props, name
         assert "product_id" not in tools[name].schema.get("required", []), name
+
+
+def test_model_top_k_is_capped_by_the_tool():
+    """The model picks top_k, but the tool sets the ceiling, so one call can
+    never pull the catalog into the context window. A non-LLM caller (the
+    storefront's /search) passes its own ceiling through ctx."""
+    tools = _tools()
+    capped = tools["search_products"].run({"query": "wireless", "top_k": 1000}, {})
+    assert len(capped["products"]) == MODEL_MAX_TOP_K
+    wide = tools["search_products"].run(
+        {"query": "wireless", "top_k": 1000}, {"top_k_cap": 50}
+    )
+    assert len(wide["products"]) > MODEL_MAX_TOP_K
+    reviews = tools["search_reviews"].run({"product_id": "P01", "top_k": 1000}, {})
+    assert len(reviews["reviews"]) <= MODEL_MAX_TOP_K
 
 
 def test_search_get_compare_flow():

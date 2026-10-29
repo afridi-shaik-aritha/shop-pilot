@@ -2,6 +2,7 @@
 
 ctx carries the mutable session objects for the current run:
 {"cart": Cart, "checkout": Checkout | None}. Tools never touch the LLM.
+Non-LLM callers may also set ctx["top_k_cap"] (see _top_k).
 """
 from dataclasses import dataclass
 from typing import Any, Callable
@@ -30,6 +31,22 @@ def _s(name: str, properties: dict, required: list[str]) -> dict:
         "properties": properties,
         "required": required,
     }
+
+
+# Most rows one tool call hands back to the model. The model picks top_k, but
+# the tool enforces the ceiling, so no single call can pull the catalog into
+# the context window. The storefront's /search (no LLM involved) passes its
+# own larger ceiling via ctx["top_k_cap"]; the model can never set ctx.
+MODEL_MAX_TOP_K = 10
+
+
+def _top_k(args: dict, ctx: dict, default: int = 5) -> int:
+    cap = ctx.get("top_k_cap", MODEL_MAX_TOP_K)
+    try:
+        requested = int(args.get("top_k", default))
+    except (TypeError, ValueError):
+        requested = default
+    return max(1, min(requested, cap))
 
 
 def _cart_of(ctx: dict) -> Cart:
@@ -121,7 +138,7 @@ def build_tools(
         if not isinstance(raw_filters, dict):
             raise ValueError("filters must be an object")
         filters = {k: v for k, v in raw_filters.items()}
-        hits = index.search(args["query"], args.get("top_k", 5), filters or None)
+        hits = index.search(args["query"], _top_k(args, ctx), filters or None)
         # NOTE: BM25 relevance (r.score) is deliberately NOT exposed — a live
         # model once quoted it as a rating ("4.0/5 (5.71 score)"). The model
         # only needs catalog facts; relevance is a ranking detail.
@@ -148,14 +165,14 @@ def build_tools(
     def search_reviews(args: dict, ctx: dict) -> dict:
         return {
             "reviews": reviews.search_reviews(
-                _resolve_product_id(args, catalog), args.get("query"), args.get("top_k", 5)
+                _resolve_product_id(args, catalog), args.get("query"), _top_k(args, ctx)
             )
         }
 
     def search_policy(args: dict, ctx: dict) -> dict:
         try:
             rules = PolicyService(load_policies(policies_path)).search(
-                args["query"], args.get("top_k", 5)
+                args["query"], _top_k(args, ctx)
             )
         except (OSError, ValueError) as exc:
             return {"error": f"policy corpus unavailable: {type(exc).__name__}"}

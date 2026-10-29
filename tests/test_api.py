@@ -196,6 +196,36 @@ def test_zero_tool_twice_falls_back_deterministically(tmp_path):
     assert body["tools"] == [] and body["products"] == []
 
 
+def test_zero_tool_policy_answer_is_retried_with_search_policy(tmp_path):
+    """Every policy answer must come from search_policy. Regression: a live
+    model answered 'what is the return policy?' with '30 days, unused' and
+    zero tool calls, while POL-RETURN says 15 days, unopened."""
+    script = [
+        LLMMessage(content="You can return items within 30 days.", tool_calls=[]),
+        LLMMessage(content="", tool_calls=[
+            ToolCall(name="search_policy", arguments={"query": "returns"})]),
+        LLMMessage(content="Unopened items can be returned within 15 days "
+                            "(POL-RETURN).", tool_calls=[]),
+    ]
+    c = TestClient(_app(tmp_path, script))
+    body = c.post("/chat", json={"message": "what is the return policy?"}).json()
+    assert body["role"] == "policy"
+    assert body["tools"] == ["search_policy"]
+    assert "15 days" in body["reply"]
+    assert "30 days" not in body["reply"]
+
+
+def test_zero_tool_policy_twice_falls_back_deterministically(tmp_path):
+    script = [
+        LLMMessage(content="Returns are accepted within 30 days.", tool_calls=[]),
+        LLMMessage(content="Still 30 days.", tool_calls=[]),
+    ]
+    c = TestClient(_app(tmp_path, script))
+    body = c.post("/chat", json={"message": "what is the return policy?"}).json()
+    assert "store policy" in body["reply"]
+    assert "30 days" not in body["reply"]
+
+
 def test_error_paths(tmp_path):
     c = TestClient(_app(tmp_path))
     assert c.get("/products/PZZ").status_code == 404

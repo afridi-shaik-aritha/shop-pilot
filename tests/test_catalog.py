@@ -26,6 +26,9 @@ def test_compare_products_grounded():
     prices = table["rows"]["price"]
     assert prices == {"P01": 8499.0, "P02": 12999.0}
     assert table["rows"]["rating"] == {"P01": 4.4, "P02": 4.6}
+    # names and stock come from the catalog, never left for the model to guess
+    assert table["rows"]["name"]["P02"] == "BassBoom Pro Wireless Headphones"
+    assert table["rows"]["stock"] == {"P01": 42, "P02": 17}
 
 
 def test_compare_unknown_raises():

@@ -2,7 +2,9 @@
 from app.models import Product, Review
 from app.retrieval.corpus import normalize_text
 
-_COMPARE_ATTRS = ("price", "rating", "review_count", "availability")
+# name and stock ride along so the model never fills them from memory: a live
+# model labelled P02 with P09's name and stock when the table held ids only.
+_COMPARE_ATTRS = ("name", "price", "rating", "review_count", "availability", "stock")
 
 
 class ProductNotFound(LookupError):
